@@ -285,7 +285,6 @@ elif server.phase == "playing":
         # 🎭 แสดงเอฟเฟกต์ความรู้สึกเฉพาะบุคคล
         if my_role != "Spectator":
             if my_p_idx == w_idx:
-                st.balloons()
                 st.success(f"🥳 **สะใจ! คุณ ({my_name}) เป็นผู้ชนะกินไม้นี้!** 👑✨🎉")
             else:
                 st.error(f"😭 **โฮ... คุณ ({my_name}) โดน P{w_idx+1} ({w_name}) กินไปซะแล้ว!** 💸🌧️💔")
