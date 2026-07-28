@@ -138,7 +138,6 @@ if server.phase == "lobby":
         st.info("👀 **คนดู:** " + ", ".join([s["name"] for s in specs]))
 
     if len(active_ps) == 4:
-        st.balloons()
         st.success("🎉 ผู้เล่นครบ 4 คนแล้ว!")
         if my_role == "P1":
             if st.button("🚀 เริ่มเกมทันที (15 รอบ)", type="primary", use_container_width=True):
