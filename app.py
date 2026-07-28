@@ -4,7 +4,8 @@ import time
 from streamlit_autorefresh import st_autorefresh
 from tui_engine import (
     deal_round, can_play_tui, can_play_sahoo, 
-    get_available_tuis, get_available_sahoos, resolve_trick
+    get_available_tuis, get_available_sahoos, resolve_trick,
+    RANK_ORDER, RANK_COUNTS
 )
 
 # ---------------------------------------------------------
@@ -19,32 +20,15 @@ st.set_page_config(
 # 🔄 รีเฟรชอัตโนมัติทุก 2 วินาที
 st_autorefresh(interval=2000, key="datarefresh")
 
-# Custom CSS ตกแต่งให้ปุ่มใหญ่ อ่านง่ายบนจอมือถือ
+# Custom CSS
 st.markdown("""
 <style>
-    /* ปรับแต่งปุ่มกดให้เต็มความกว้างและกดง่ายบนมือถือ */
     .stButton > button {
         border-radius: 10px;
         font-weight: bold;
         font-size: 16px !important;
         padding: 10px 15px !important;
     }
-    /* ปรับขนาดตัวหนังสือสำหรับมือถือ */
-    .mobile-card {
-        background-color: #f0f2f6;
-        border-radius: 10px;
-        padding: 10px;
-        margin-bottom: 8px;
-        border-left: 4px solid #ff4b4b;
-    }
-    .badge-winner {
-        background-color: #28a745;
-        color: white;
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 12px;
-    }
-    /* ซ่อนแถบควบคุมบางจุดที่ไม่จำเป็น */
     div[data-testid="stSidebarNav"] {display: none;}
 </style>
 """, unsafe_allow_html=True)
@@ -57,7 +41,7 @@ class GameServer:
         self.reset_game()
 
     def reset_game(self):
-        self.players = {}  # {session_id: {"name": str, "role": "P1"..."Spectator"}}
+        self.players = {}
         self.game_started = False
         self.round_num = 1
         self.scores = [0, 0, 0, 0]
@@ -72,7 +56,8 @@ class GameServer:
         self.phase = "lobby"
         self.current_plays = {}
         self.current_play_type = "Med"
-        self.last_trick_summary = None  # สรุปผลไม้ล่าสุด
+        self.last_trick_summary = None
+        self.played_pieces = []  # 📊 เก็บหมากที่เล่นออกไปแล้วในรอบนี้
 
 @st.cache_resource
 def get_game_server():
@@ -80,9 +65,43 @@ def get_game_server():
 
 server = get_game_server()
 
-# Safe attribute check
+# Safety attributes
 if not hasattr(server, 'last_trick_summary'):
     server.last_trick_summary = None
+if not hasattr(server, 'played_pieces'):
+    server.played_pieces = []
+
+# ---------------------------------------------------------
+# 📊 ฟังก์ชันแสดงผลตารางหมากที่ออกไปแล้ว (Mobile Tracker)
+# ---------------------------------------------------------
+def render_played_tracker(played_pieces):
+    played_counts = {}
+    for p in played_pieces:
+        key = (p.rank, p.color)
+        played_counts[key] = played_counts.get(key, 0) + 1
+
+    total_played = len(played_pieces)
+    with st.expander(f"📊 เช็คหมากที่ออกไปแล้ว ({total_played}/32 ใบ)", expanded=False):
+        c1, c2 = st.columns(2)
+        
+        # เรียงลำดับหมากจากใหญ่ไปเล็ก (Tee -> Jut)
+        display_ranks = list(reversed(RANK_ORDER))
+
+        with c1:
+            st.markdown("**🔴 หมากแดง**")
+            for rank in display_ranks:
+                total = RANK_COUNTS[rank]
+                played = played_counts.get((rank, "Red"), 0)
+                icon = "✅" if played == total else ("🟡" if played > 0 else "⚪")
+                st.caption(f"{icon} **{rank}**: {played}/{total}")
+
+        with c2:
+            st.markdown("**⚫ หมากดำ**")
+            for rank in display_ranks:
+                total = RANK_COUNTS[rank]
+                played = played_counts.get((rank, "Black"), 0)
+                icon = "✅" if played == total else ("🟡" if played > 0 else "⚪")
+                st.caption(f"{icon} **{rank}**: {played}/{total}")
 
 # ---------------------------------------------------------
 # 👤 จัดการผู้เล่นเข้าห้อง (Session Tracking)
@@ -119,7 +138,6 @@ my_role = my_player_info["role"]
 my_name = my_player_info["name"]
 my_p_idx = my_player_info["p_idx"]
 
-# Header สรุปสั้นๆ บนมือถือ
 col_h1, col_h2 = st.columns([2, 1])
 with col_h1:
     st.markdown(f"🎴 **เกมตุ่ย** | คุณคือ: **{my_name}** (`{my_role}`)")
@@ -130,7 +148,6 @@ with col_h2:
 
 st.divider()
 
-# Helper ดึงชื่อตาม index
 def get_player_name(idx):
     p = next((p for p in server.players.values() if p["p_idx"] == idx), None)
     return p["name"] if p else f"P{idx+1}"
@@ -144,7 +161,6 @@ if server.phase == "lobby":
     active_ps = [p for p in server.players.values() if p["role"].startswith("P")]
     specs = [p for p in server.players.values() if p["role"] == "Spectator"]
 
-    # แสดงผลแบบ 2x2 Grid สำหรับมือถือ
     c1, c2 = st.columns(2)
     cols = [c1, c2, c1, c2]
     for i in range(4):
@@ -168,6 +184,7 @@ if server.phase == "lobby":
                 server.leader = leader
                 server.current_bidder = leader
                 server.multiplier = mult
+                server.played_pieces = []
                 server.phase = "bidding"
                 st.rerun()
         else:
@@ -182,7 +199,6 @@ elif server.phase == "bidding":
     st.markdown(f"### 🎲 รอบที่ {server.round_num}/15 (ตัวคูณ x{server.multiplier})")
     st.caption(f"👑 Leader เริ่มบิด: **P{server.leader+1} ({get_player_name(server.leader)})**")
 
-    # 1. Action ส่วนของการบิด (ถ้าถึงตาเรา ให้ขึ้นตรงนี้ทันที!)
     bid_order = [(server.leader + i) % 4 for i in range(4)]
     order_idx = bid_order.index(server.current_bidder) if server.current_bidder in bid_order else 0
 
@@ -191,7 +207,6 @@ elif server.phase == "bidding":
             with st.container(border=True):
                 st.subheader(f"🎯 ถึงตาคุณ ({my_name}) บิดแต้ม!")
 
-                # 🚫 กฎคนสุดท้าย: ผลรวมแต้มห้ามเท่ากับ 8
                 if order_idx == 3:
                     prev_sum = sum(server.bids[p] for p in bid_order[:3])
                     forbidden_bid = 8 - prev_sum
@@ -220,7 +235,6 @@ elif server.phase == "bidding":
         else:
             st.info(f"⏳ กำลังรอ **P{server.current_bidder+1} ({get_player_name(server.current_bidder)})** บิดแต้ม...")
 
-    # 2. ตารางสรุปการบิด 2x2 บนมือถือ
     st.write("📋 **สถานะการบิดแต้ม:**")
     b_col1, b_col2 = st.columns(2)
     b_cols = [b_col1, b_col2, b_col1, b_col2]
@@ -238,7 +252,6 @@ elif server.phase == "bidding":
 
     st.divider()
 
-    # 3. ดูหมากในมือ (จัดกลุ่มด้วย Tabs บนมือถือ)
     st.write("🎴 **ดูหมากในมือ:**")
     tabs = st.tabs(["👤 ไพ่ของคุณ"] + [f"P{i+1}" for i in range(4) if i != my_p_idx])
     
@@ -274,6 +287,8 @@ elif server.phase == "playing":
     if len(server.current_plays) == 4:
         for p_idx, chosen_list in server.current_plays.items():
             for target_p in chosen_list:
+                # 📌 บันทึกหมากที่เล่นแล้วลง Tracker
+                server.played_pieces.append(target_p)
                 for hand_p in list(server.hands[p_idx]):
                     if hand_p.key() == target_p.key():
                         server.hands[p_idx].remove(hand_p)
@@ -294,7 +309,7 @@ elif server.phase == "playing":
         server.current_plays = {}
         st.rerun()
 
-    # 2. แถบสรุปเป้าหมายและการกิน (2x2 Grid)
+    # 2. แถบสรุปเป้าหมายและการกิน
     s_col1, s_col2 = st.columns(2)
     s_cols = [s_col1, s_col2, s_col1, s_col2]
     for i in range(4):
@@ -302,30 +317,42 @@ elif server.phase == "playing":
         won, bid = server.tricks_won[i], server.bids[i]
         s_cols[i].caption(f"**P{i+1} {p_n}**: กิน **{won}/{bid}**")
 
-    # 🔔 3. สรุปผลไม้ล่าสุด
+    # 📊 3. แสดง Tracker เช็คหมากที่ออกไปแล้ว
+    render_played_tracker(getattr(server, 'played_pieces', []))
+
+    # 🔔 4. สรุปผลไม้ล่าสุด + 🎉 เอฟเฟกต์ชนะ/แพ้ 😭
     if getattr(server, 'last_trick_summary', None):
         summary = server.last_trick_summary
-        with st.expander(f"🔔 **ไม้ล่าสุด:** 🏆 P{summary['winner_idx']+1} ({summary['winner_name']}) ชนะ!", expanded=False):
+        w_idx = summary['winner_idx']
+        w_name = summary['winner_name']
+
+        if my_role != "Spectator":
+            if my_p_idx == w_idx:
+                st.balloons()
+                st.success(f"🥳 **สะใจ! คุณ ({my_name}) เป็นผู้ชนะกินไม้นี้!** 👑✨🎉")
+            else:
+                st.error(f"😭 **โฮ... คุณ ({my_name}) โดน P{w_idx+1} ({w_name}) กินไปซะแล้ว!** 💸🌧️💔")
+
+        with st.expander(f"🔔 **สรุปผลไม้ล่าสุด:** 🏆 P{w_idx+1} ({w_name}) ชนะกินไม้!", expanded=True):
             for p_i in range(4):
                 p_n = get_player_name(p_i)
                 cards_str = ", ".join(summary['plays'][p_i])
-                win_tag = " 🏆" if p_i == summary['winner_idx'] else ""
-                st.write(f"• **{p_n}**: {cards_str}{win_tag}")
+                if p_i == w_idx:
+                    st.markdown(f"🏆 **P{p_i+1} ({p_n})**: `{cards_str}` **(ชนะกินไม้! 🥳🔥)**")
+                else:
+                    st.markdown(f"😭 🌧️ **P{p_i+1} ({p_n})**: `{cards_str}` *(โดนกิน... 💸)*")
 
     st.divider()
 
-    # 🎯 4. พื้นที่การเล่นหมากในไม้นี้ (บนโต๊ะ)
     leader_n = get_player_name(server.leader)
     st.markdown(f"👑 Leader ไม้นี้: **P{server.leader+1} ({leader_n})**")
 
-    # ถ้ายังมีหมากเล่นอยู่
     if any(len(h) > 0 for h in server.hands):
         
-        # 🟢 Action ของผู้เล่น (ดึงขึ้นบนสุดเพื่อความสะดวก)
+        # 🟢 Action การลงหมากของผู้เล่น
         if my_role != "Spectator":
             my_hand_indexed = list(enumerate(server.hands[my_p_idx]))
 
-            # ถ้าเราเป็น Leader
             if my_p_idx == server.leader and my_p_idx not in server.current_plays:
                 with st.container(border=True):
                     st.subheader("🔥 ถึงตาคุณเปิดหมากนำ (Leader):")
@@ -361,7 +388,6 @@ elif server.phase == "playing":
                             server.current_play_type = type_code
                             st.rerun()
 
-            # ถ้าผู้ตามลงหมาก
             elif server.leader in server.current_plays and my_p_idx not in server.current_plays:
                 with st.container(border=True):
                     type_code = server.current_play_type
@@ -390,12 +416,12 @@ elif server.phase == "playing":
                         else:
                             st.caption(f"เลือกอีก {curr_req - len(sel_mult)} ใบให้ครบถ้วน")
             elif my_p_idx in server.current_plays:
-                st.success("✅ คุณเลือกลงหมากในไม้นี้แล้ว (รอผู้เล่นท่านอื่น...)")
+                st.success("✅ คุณเลือกลงหมากแล้ว 🔒 (ซ่อนไว้ รอคนอื่นลงให้ครบ...)")
             else:
                 st.info(f"⏳ รอ Leader (**P{server.leader+1} {leader_n}**) เปิดหมากก่อน...")
 
-        # 🃏 5. แสดงหมากที่ลงบนโต๊ะปัจจุบัน
-        st.write("📌 **หมากที่ลงบนโต๊ะปัจจุบัน:**")
+        # 🔒 5. สถานะหมากบนโต๊ะ
+        st.write("📌 **สถานะหมากบนโต๊ะ:**")
         p_col1, p_col2 = st.columns(2)
         p_cols = [p_col1, p_col2, p_col1, p_col2]
 
@@ -403,12 +429,10 @@ elif server.phase == "playing":
             with p_cols[i]:
                 p_n = get_player_name(i)
                 if i in server.current_plays:
-                    cards_played = ", ".join([str(c) for c in server.current_plays[i]])
-                    st.success(f"**P{i+1} ({p_n})**: {cards_played}")
+                    st.info(f"**P{i+1} ({p_n})**: ลงแล้ว 🔒 *(ซ่อนไว้)*")
                 else:
                     st.warning(f"**P{i+1} ({p_n})**: *ยังไม่ลง*")
 
-        # 🎴 6. ไพ่ในมือของคุณ
         st.divider()
         if my_role != "Spectator":
             with st.expander(f"🎴 ดูไพ่ในมือของคุณ ({len(server.hands[my_p_idx])} ใบ)", expanded=True):
@@ -459,6 +483,7 @@ elif server.phase == "round_summary":
             server.bids_entered = [False, False, False, False]
             server.current_plays = {}
             server.last_trick_summary = None
+            server.played_pieces = []  # 🔄 ล้างประวัติหมากที่เล่นเมื่อขึ้นรอบใหม่
             server.phase = "bidding"
             st.rerun()
     else:
