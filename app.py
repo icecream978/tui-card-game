@@ -4,8 +4,7 @@ import time
 from streamlit_autorefresh import st_autorefresh
 from tui_engine import (
     deal_round, can_play_tui, can_play_sahoo, 
-    get_available_tuis, get_available_sahoos, resolve_trick,
-    RANK_ORDER, RANK_COUNTS
+    get_available_tuis, get_available_sahoos, resolve_trick
 )
 
 # ---------------------------------------------------------
@@ -20,7 +19,7 @@ st.set_page_config(
 # 🔄 รีเฟรชอัตโนมัติทุก 2 วินาที
 st_autorefresh(interval=2000, key="datarefresh")
 
-# Custom CSS
+# Custom CSS ตกแต่งให้ปุ่มใหญ่ อ่านง่ายบนจอมือถือ
 st.markdown("""
 <style>
     .stButton > button {
@@ -57,7 +56,6 @@ class GameServer:
         self.current_plays = {}
         self.current_play_type = "Med"
         self.last_trick_summary = None
-        self.played_pieces = []  # 📊 เก็บหมากที่เล่นออกไปแล้วในรอบนี้
 
 @st.cache_resource
 def get_game_server():
@@ -65,43 +63,8 @@ def get_game_server():
 
 server = get_game_server()
 
-# Safety attributes
 if not hasattr(server, 'last_trick_summary'):
     server.last_trick_summary = None
-if not hasattr(server, 'played_pieces'):
-    server.played_pieces = []
-
-# ---------------------------------------------------------
-# 📊 ฟังก์ชันแสดงผลตารางหมากที่ออกไปแล้ว (Mobile Tracker)
-# ---------------------------------------------------------
-def render_played_tracker(played_pieces):
-    played_counts = {}
-    for p in played_pieces:
-        key = (p.rank, p.color)
-        played_counts[key] = played_counts.get(key, 0) + 1
-
-    total_played = len(played_pieces)
-    with st.expander(f"📊 เช็คหมากที่ออกไปแล้ว ({total_played}/32 ใบ)", expanded=False):
-        c1, c2 = st.columns(2)
-        
-        # เรียงลำดับหมากจากใหญ่ไปเล็ก (Tee -> Jut)
-        display_ranks = list(reversed(RANK_ORDER))
-
-        with c1:
-            st.markdown("**🔴 หมากแดง**")
-            for rank in display_ranks:
-                total = RANK_COUNTS[rank]
-                played = played_counts.get((rank, "Red"), 0)
-                icon = "✅" if played == total else ("🟡" if played > 0 else "⚪")
-                st.caption(f"{icon} **{rank}**: {played}/{total}")
-
-        with c2:
-            st.markdown("**⚫ หมากดำ**")
-            for rank in display_ranks:
-                total = RANK_COUNTS[rank]
-                played = played_counts.get((rank, "Black"), 0)
-                icon = "✅" if played == total else ("🟡" if played > 0 else "⚪")
-                st.caption(f"{icon} **{rank}**: {played}/{total}")
 
 # ---------------------------------------------------------
 # 👤 จัดการผู้เล่นเข้าห้อง (Session Tracking)
@@ -184,7 +147,6 @@ if server.phase == "lobby":
                 server.leader = leader
                 server.current_bidder = leader
                 server.multiplier = mult
-                server.played_pieces = []
                 server.phase = "bidding"
                 st.rerun()
         else:
@@ -287,8 +249,6 @@ elif server.phase == "playing":
     if len(server.current_plays) == 4:
         for p_idx, chosen_list in server.current_plays.items():
             for target_p in chosen_list:
-                # 📌 บันทึกหมากที่เล่นแล้วลง Tracker
-                server.played_pieces.append(target_p)
                 for hand_p in list(server.hands[p_idx]):
                     if hand_p.key() == target_p.key():
                         server.hands[p_idx].remove(hand_p)
@@ -317,15 +277,13 @@ elif server.phase == "playing":
         won, bid = server.tricks_won[i], server.bids[i]
         s_cols[i].caption(f"**P{i+1} {p_n}**: กิน **{won}/{bid}**")
 
-    # 📊 3. แสดง Tracker เช็คหมากที่ออกไปแล้ว
-    render_played_tracker(getattr(server, 'played_pieces', []))
-
-    # 🔔 4. สรุปผลไม้ล่าสุด + 🎉 เอฟเฟกต์ชนะ/แพ้ 😭
+    # 🔔 3. สรุปผลไม้ล่าสุด + 🎉 เอฟเฟกต์ชนะ/แพ้ 😭
     if getattr(server, 'last_trick_summary', None):
         summary = server.last_trick_summary
         w_idx = summary['winner_idx']
         w_name = summary['winner_name']
 
+        # 🎭 แสดงเอฟเฟกต์ความรู้สึกเฉพาะบุคคล
         if my_role != "Spectator":
             if my_p_idx == w_idx:
                 st.balloons()
@@ -420,7 +378,7 @@ elif server.phase == "playing":
             else:
                 st.info(f"⏳ รอ Leader (**P{server.leader+1} {leader_n}**) เปิดหมากก่อน...")
 
-        # 🔒 5. สถานะหมากบนโต๊ะ
+        # 🔒 4. สถานะหมากบนโต๊ะ (ซ่อนไพ่ไว้จนกว่าจะครบ 4 คน)
         st.write("📌 **สถานะหมากบนโต๊ะ:**")
         p_col1, p_col2 = st.columns(2)
         p_cols = [p_col1, p_col2, p_col1, p_col2]
@@ -483,7 +441,6 @@ elif server.phase == "round_summary":
             server.bids_entered = [False, False, False, False]
             server.current_plays = {}
             server.last_trick_summary = None
-            server.played_pieces = []  # 🔄 ล้างประวัติหมากที่เล่นเมื่อขึ้นรอบใหม่
             server.phase = "bidding"
             st.rerun()
     else:
