@@ -36,11 +36,11 @@ st.markdown("""
 # 🧠 ฟังก์ชันตรวจสอบชุดหมากใหม่ (Helper Functions)
 # ---------------------------------------------------------
 def is_jut(piece):
-    """เช็คว่าเป็นตัวจุดหรือไม่ (ไม่ใช่ชุดฮู้)"""
-    return piece.rank not in ["Maa", "Pao", "Ruea", "Tee", "Bin", "Chang"]
+    """เช็คว่าเป็นหมากจุดล้วนๆ (rank ต้องเป็น 'Jut' เท่านั้น)"""
+    return piece.rank == "Jut"
 
 def get_available_sa_jut(hand):
-    """หาชุดซาจุด (จุดสีเดียวกัน 3 ใบ)"""
+    """หาชุดซาจุด (หมากจุดล้วนสีเดียวกัน 3 ใบ)"""
     red_juts = [p for p in hand if is_jut(p) and p.color == "Red"]
     black_juts = [p for p in hand if is_jut(p) and p.color == "Black"]
     res = []
@@ -51,7 +51,7 @@ def get_available_sa_jut(hand):
     return res
 
 def get_available_pho_jut(hand):
-    """หาชุดโฟจุด (จุดสีเดียวกัน 4 ใบ)"""
+    """หาชุดโฟจุด (หมากจุดล้วนสีเดียวกัน 4 ใบ)"""
     red_juts = [p for p in hand if is_jut(p) and p.color == "Red"]
     black_juts = [p for p in hand if is_jut(p) and p.color == "Black"]
     res = []
