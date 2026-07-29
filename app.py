@@ -1,6 +1,7 @@
 import streamlit as st
 import random
 import time
+import os
 import json
 import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
@@ -19,7 +20,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# รีเฟรชอัตโนมัติทุก 2 วินาที
 st_autorefresh(interval=2000, key="datarefresh")
 
 st.markdown("""
@@ -34,40 +34,41 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 🇹🇭 แปลภาษายศหมากไทย (เผ่า, เรือ, ม้า)
+# 🇹🇭 แปลภาษายศหมากไทย (เรือ, เผ่า, ม้า, ช้าง, บิน, ตี่, จุก)
 # ---------------------------------------------------------
 RANK_THAI = {
-    "Tee": "ตี่",
-    "Bin": "บิน",
-    "Chang": "ช้าง",
-    "Ruea": "เรือ",
-    "Maa": "ม้า",
-    "Pao": "เผ่า",
-    "Jut": "จุก"
+    "Tee": "ตี่", "TEE": "ตี่", "tee": "ตี่",
+    "Bin": "บิน", "BIN": "บิน", "bin": "บิน",
+    "Chang": "ช้าง", "CHANG": "ช้าง", "chang": "ช้าง",
+    "Ruea": "เรือ", "RUEA": "เรือ", "ruea": "เรือ", "Rua": "เรือ", "RUA": "เรือ",
+    "Maa": "ม้า", "MAA": "ม้า", "maa": "ม้า", "Ma": "ม้า",
+    "Pao": "เผ่า", "PAO": "เผ่า", "pao": "เผ่า",
+    "Jut": "จุก", "JUT": "จุก", "jut": "จุก", "Juk": "จุก"
 }
 
-RANK_VAL = {r: i for i, r in enumerate(RANK_ORDER)}
+def get_rank_thai(rank):
+    return RANK_THAI.get(str(rank).strip(), str(rank))
 
 def card_label(card):
-    symbol = "🔴" if card.color == "Red" else "⚫"
-    return f"{symbol}{RANK_THAI.get(card.rank, card.rank)}"
+    symbol = "🔴" if str(card.color).strip().lower() in ["red", "r"] else "⚫"
+    return f"{symbol}{get_rank_thai(card.rank)}"
 
 # ---------------------------------------------------------
 # 🧠 ฟังก์ชันตรวจสอบชุดหมาก
 # ---------------------------------------------------------
-def is_juk(piece): return piece.rank == "Jut"
+def is_juk(piece): return get_rank_thai(piece.rank) == "จุก"
 
 def get_available_sa_juk(hand):
-    red_juks = [p for p in hand if is_juk(p) and p.color == "Red"]
-    black_juks = [p for p in hand if is_juk(p) and p.color == "Black"]
+    red_juks = [p for p in hand if is_juk(p) and str(p.color).lower() in ["red", "r"]]
+    black_juks = [p for p in hand if is_juk(p) and str(p.color).lower() in ["black", "b"]]
     res = []
     if len(red_juks) >= 3: res.append(red_juks[:3])
     if len(black_juks) >= 3: res.append(black_juks[:3])
     return res
 
 def get_available_pho_juk(hand):
-    red_juks = [p for p in hand if is_juk(p) and p.color == "Red"]
-    black_juks = [p for p in hand if is_juk(p) and p.color == "Black"]
+    red_juks = [p for p in hand if is_juk(p) and str(p.color).lower() in ["red", "r"]]
+    black_juks = [p for p in hand if is_juk(p) and str(p.color).lower() in ["black", "b"]]
     res = []
     if len(red_juks) >= 4: res.append(red_juks[:4])
     if len(black_juks) >= 4: res.append(black_juks[:4])
@@ -78,9 +79,9 @@ def get_available_pho_hoo(hand):
     res = []
     for s_type, s_cards in sahoos:
         color = s_cards[0].color
-        extra_candidates = [p for p in hand if p not in s_cards and p.color == color and p.rank in ["Bin", "Chang"]]
+        extra_candidates = [p for p in hand if p not in s_cards and p.color == color and get_rank_thai(p.rank) in ["บิน", "ช้าง"]]
         for extra in extra_candidates:
-            extra_th = RANK_THAI.get(extra.rank, extra.rank)
+            extra_th = get_rank_thai(extra.rank)
             res.append((f"{s_type}+{extra_th}", s_cards + [extra]))
     return res
 
@@ -89,11 +90,345 @@ def get_available_five_hoo(hand):
     res = []
     for s_type, s_cards in sahoos:
         color = s_cards[0].color
-        bins = [p for p in hand if p not in s_cards and p.color == color and p.rank == "Bin"]
-        changs = [p for p in hand if p not in s_cards and p.color == color and p.rank == "Chang"]
+        bins = [p for p in hand if p not in s_cards and p.color == color and get_rank_thai(p.rank) == "บิน"]
+        changs = [p for p in hand if p not in s_cards and p.color == color and get_rank_thai(p.rank) == "ช้าง"]
         if bins and changs:
             res.append((f"{s_type}+บิน+ช้าง", s_cards + [bins[0], changs[0]]))
     return res
+
+# ---------------------------------------------------------
+# 🛠️ สร้าง Streamlit Custom Component สำหรับลาก/วางไพ่
+# ---------------------------------------------------------
+COMPONENT_DIR = os.path.join(os.path.dirname(__file__), "tui_card_component")
+os.makedirs(COMPONENT_DIR, exist_ok=True)
+
+INDEX_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; user-select: none; -webkit-user-select: none; }
+    body { margin: 0; padding: 2px; background: transparent; }
+
+    .drop-zone {
+        border: 2px dashed #1976D2;
+        border-radius: 10px;
+        padding: 6px;
+        min-height: 58px;
+        background: #F0F7FF;
+        margin-bottom: 8px;
+        text-align: center;
+        transition: all 0.2s;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+    .drop-zone.hover { border-color: #2E7D32; background: #E8F5E9; }
+
+    .drop-zone-title {
+        font-size: 11px;
+        color: #1565C0;
+        font-weight: bold;
+        margin-bottom: 3px;
+    }
+
+    .drop-zone-cards {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        justify-content: center;
+        width: 100%;
+    }
+
+    .empty-hint {
+        font-size: 12px;
+        color: #78909C;
+    }
+
+    /* 1 แถวใส่ 4 หมากพอดี */
+    .card-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 6px;
+        margin-bottom: 8px;
+    }
+
+    .card-item {
+        background: #FFFFFF;
+        border: 2px solid #CFD8DC;
+        border-radius: 8px;
+        padding: 8px 2px;
+        text-align: center;
+        font-size: 13px;
+        font-weight: bold;
+        cursor: grab;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        touch-action: none;
+        transition: transform 0.15s, border-color 0.15s, opacity 0.15s;
+    }
+    .card-item.red { color: #D32F2F; border-color: #EF9A9A; background-color: #FFEBEE; }
+    .card-item.black { color: #212121; border-color: #B0BEC5; background-color: #ECEFF1; }
+    .card-item.dragging { opacity: 0.4; }
+
+    .drop-card {
+        padding: 5px 8px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: bold;
+        cursor: pointer;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .drop-card.red { color: #D32F2F; border: 1.5px solid #EF9A9A; background-color: #FFEBEE; }
+    .drop-card.black { color: #212121; border: 1.5px solid #B0BEC5; background-color: #ECEFF1; }
+    .drop-card .remove-btn {
+        font-size: 11px;
+        background: rgba(0,0,0,0.1);
+        border-radius: 50%;
+        width: 14px;
+        height: 14px;
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
+        margin-left: 2px;
+    }
+
+    .play-btn {
+        width: 100%;
+        padding: 9px;
+        background-color: #2E7D32;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: bold;
+        font-size: 14px;
+        cursor: pointer;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    }
+    .play-btn:disabled { background-color: #B0BEC5; cursor: not-allowed; box-shadow: none; }
+</style>
+</head>
+<body>
+
+<div id="drop-zone" class="drop-zone">
+    <div class="drop-zone-title" id="drop-title">🎯 ช่องลงหมาก</div>
+    <div id="drop-cards-container" class="drop-zone-cards"></div>
+    <div id="empty-hint" class="empty-hint">ลากไพ่มาวางที่นี่ หรือ แตะเลือกไพ่</div>
+</div>
+
+<div id="card-grid" class="card-grid"></div>
+
+<button id="submit-btn" class="play-btn" disabled onclick="submitPlay()">🚀 ลงหมากที่เลือก</button>
+
+<script>
+    let cardsData = [];
+    let reqCount = 1;
+    let isDisabled = false;
+
+    let inDropZone = [];
+    let inHand = [];
+
+    function sendToStreamlit(value) {
+        window.parent.postMessage({
+            isStreamlitMessage: true,
+            type: "streamlit:setComponentValue",
+            value: value
+        }, "*");
+    }
+
+    function setFrameHeight() {
+        const height = document.body.scrollHeight + 8;
+        window.parent.postMessage({
+            isStreamlitMessage: true,
+            type: "streamlit:setFrameHeight",
+            height: height
+        }, "*");
+    }
+
+    window.addEventListener("message", function(event) {
+        if (event.data.type === "streamlit:render") {
+            const args = event.data.args;
+            cardsData = args.cards || [];
+            reqCount = args.req_cnt || 1;
+            isDisabled = args.disabled || false;
+
+            inDropZone = [];
+            inHand = cardsData.map((_, i) => i);
+
+            render();
+        }
+    });
+
+    function render() {
+        document.getElementById('drop-title').innerText = `🎯 ช่องลงหมาก (${inDropZone.length}/${reqCount} ใบ)`;
+        
+        const dropContainer = document.getElementById('drop-cards-container');
+        const emptyHint = document.getElementById('empty-hint');
+        dropContainer.innerHTML = '';
+
+        if (inDropZone.length === 0) {
+            emptyHint.style.display = 'block';
+        } else {
+            emptyHint.style.display = 'none';
+            inDropZone.forEach((cardIdx) => {
+                const card = cardsData[cardIdx];
+                if (!card) return;
+                const el = document.createElement('div');
+                el.className = `drop-card ${card.is_red ? 'red' : 'black'}`;
+                el.innerHTML = `<span>${card.symbol}${card.label}</span><span class="remove-btn">✕</span>`;
+                el.onclick = () => removeFromDropZone(cardIdx);
+                dropContainer.appendChild(el);
+            });
+        }
+
+        const grid = document.getElementById('card-grid');
+        grid.innerHTML = '';
+
+        inHand.forEach((cardIdx, handPosition) => {
+            const card = cardsData[cardIdx];
+            if (!card) return;
+
+            const el = document.createElement('div');
+            el.className = `card-item ${card.is_red ? 'red' : 'black'}`;
+            el.setAttribute('draggable', isDisabled ? 'false' : 'true');
+            el.dataset.cardIdx = cardIdx;
+            el.dataset.handPos = handPosition;
+            el.innerHTML = `<div>${card.symbol}${card.label}</div>`;
+
+            el.onclick = () => {
+                if (isDisabled) return;
+                if (inDropZone.length < reqCount) {
+                    moveToDropZone(cardIdx);
+                } else if (reqCount === 1) {
+                    inHand.push(...inDropZone);
+                    inDropZone = [cardIdx];
+                    inHand = inHand.filter(i => i !== cardIdx);
+                    render();
+                }
+            };
+
+            el.ondragstart = (e) => {
+                e.dataTransfer.setData('text/plain', JSON.stringify({cardIdx, handPosition}));
+                el.classList.add('dragging');
+            };
+            el.ondragend = () => el.classList.remove('dragging');
+
+            el.ondragover = (e) => e.preventDefault();
+            el.ondrop = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const dataRaw = e.dataTransfer.getData('text/plain');
+                if (!dataRaw) return;
+                try {
+                    const data = JSON.parse(dataRaw);
+                    const srcHandPos = data.handPosition;
+                    if (srcHandPos !== undefined && srcHandPos !== handPosition) {
+                        const temp = inHand[srcHandPos];
+                        inHand[srcHandPos] = inHand[handPosition];
+                        inHand[handPosition] = temp;
+                        render();
+                    }
+                } catch(err){}
+            };
+
+            grid.appendChild(el);
+        });
+
+        const dz = document.getElementById('drop-zone');
+        dz.ondragover = (e) => { e.preventDefault(); if (!isDisabled) dz.classList.add('hover'); };
+        dz.ondragleave = () => dz.classList.remove('hover');
+        dz.ondrop = (e) => {
+            e.preventDefault();
+            dz.classList.remove('hover');
+            if (isDisabled) return;
+            const dataRaw = e.dataTransfer.getData('text/plain');
+            if (!dataRaw) return;
+            try {
+                const data = JSON.parse(dataRaw);
+                if (data.cardIdx !== undefined) moveToDropZone(data.cardIdx);
+            } catch(err){}
+        };
+
+        setupTouchEvents();
+
+        const btn = document.getElementById('submit-btn');
+        btn.disabled = isDisabled || (inDropZone.length !== reqCount);
+        btn.innerText = `🚀 ลงหมากที่เลือก (${inDropZone.length}/${reqCount})`;
+
+        setFrameHeight();
+    }
+
+    function moveToDropZone(cardIdx) {
+        if (inDropZone.includes(cardIdx)) return;
+        if (inDropZone.length < reqCount) {
+            inDropZone.push(cardIdx);
+            inHand = inHand.filter(i => i !== cardIdx);
+            render();
+        }
+    }
+
+    function removeFromDropZone(cardIdx) {
+        inDropZone = inDropZone.filter(i => i !== cardIdx);
+        if (!inHand.includes(cardIdx)) inHand.push(cardIdx);
+        render();
+    }
+
+    let touchSrcIdx = null;
+    let touchSrcHandPos = null;
+
+    function setupTouchEvents() {
+        const grid = document.getElementById('card-grid');
+        grid.ontouchstart = (e) => {
+            const cardEl = e.target.closest('.card-item');
+            if (cardEl) {
+                touchSrcIdx = parseInt(cardEl.dataset.cardIdx);
+                touchSrcHandPos = parseInt(cardEl.dataset.handPos);
+            }
+        };
+
+        grid.ontouchend = (e) => {
+            if (touchSrcIdx !== null) {
+                const touch = e.changedTouches[0];
+                const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+                
+                if (targetEl && targetEl.closest('#drop-zone')) {
+                    if (!isDisabled) moveToDropZone(touchSrcIdx);
+                } 
+                else if (targetEl && targetEl.closest('.card-item')) {
+                    const targetCardEl = targetEl.closest('.card-item');
+                    const targetPos = parseInt(targetCardEl.dataset.handPos);
+                    if (!isNaN(targetPos) && targetPos !== touchSrcHandPos) {
+                        const temp = inHand[touchSrcHandPos];
+                        inHand[touchSrcHandPos] = inHand[targetPos];
+                        inHand[targetPos] = temp;
+                        render();
+                    }
+                }
+                touchSrcIdx = null;
+                touchSrcHandPos = null;
+            }
+        };
+    }
+
+    function submitPlay() {
+        if (inDropZone.length === reqCount && !isDisabled) {
+            sendToStreamlit(inDropZone);
+        }
+    }
+</script>
+</body>
+</html>
+"""
+
+with open(os.path.join(COMPONENT_DIR, "index.html"), "w", encoding="utf-8") as f:
+    f.write(INDEX_HTML)
+
+tui_card_selector = components.declare_component("tui_card_selector", path=COMPONENT_DIR)
 
 # ---------------------------------------------------------
 # 🏠 Global Room Manager & Session
@@ -141,17 +476,6 @@ if "current_room" not in st.session_state:
 
 my_id = st.session_state.my_id
 
-# ตรวจสอบการส่งข้อมูลการเล่นหมากผ่าน URL Query Parameters
-query_params = st.query_params
-played_indices_from_js = None
-if "play_action" in query_params:
-    try:
-        raw_val = query_params["play_action"]
-        played_indices_from_js = [int(x) for x in raw_val.split(",") if x.strip().isdigit()]
-    except Exception:
-        pass
-    st.query_params.clear()
-
 # ---------------------------------------------------------
 # 🚪 หน้าเลือกห้อง
 # ---------------------------------------------------------
@@ -194,7 +518,7 @@ if my_id not in server.players:
 my_player_info = server.players[my_id]
 my_role, my_name, my_p_idx = my_player_info["role"], my_player_info["name"], my_player_info["p_idx"]
 
-# Header แบบย่อปุ่มเหลือแค่อิโมจิ
+# Header แบบย่อปุ่ม
 c_head, c_reset, c_leave = st.columns([6, 1, 1])
 c_head.markdown(f"🏠 **{room_code}** | **{my_name}** (`{my_role}`)")
 if c_reset.button("🔄", help="รีเซ็ตห้อง"):
@@ -209,211 +533,18 @@ def get_player_name(idx):
     p = next((p for p in server.players.values() if p["p_idx"] == idx), None)
     return p["name"] if p else f"P{idx+1}"
 
-# ---------------------------------------------------------
-# 🎴 Drag-and-Drop Card Component (4 หมากต่อ 1 แถว)
-# ---------------------------------------------------------
-def render_drag_and_drop_hand(hand, req_cnt=1, disabled=False):
+def render_hand_selector(hand, req_cnt=1, disabled=False, key_suffix=""):
     cards_payload = []
     for idx, c in enumerate(hand):
         cards_payload.append({
             "idx": idx,
-            "label": RANK_THAI.get(c.rank, c.rank),
-            "symbol": "🔴" if c.color == "Red" else "⚫",
-            "is_red": c.color == "Red"
+            "label": get_rank_thai(c.rank),
+            "symbol": "🔴" if str(c.color).strip().lower() in ["red", "r"] else "⚫",
+            "is_red": str(c.color).strip().lower() in ["red", "r"]
         })
 
-    html_code = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <style>
-        * {{ box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; user-select: none; }}
-        body {{ margin: 0; padding: 2px; background: transparent; }}
-        
-        /* Dropzone พื้นที่ลากไพ่มาวาง */
-        .drop-zone {{
-            border: 2px dashed #9E9E9E;
-            border-radius: 8px;
-            padding: 8px;
-            text-align: center;
-            font-size: 13px;
-            font-weight: bold;
-            color: #555;
-            background: #FAFAFA;
-            margin-bottom: 8px;
-            transition: all 0.2s;
-        }}
-        .drop-zone.hover {{ border-color: #2196F3; background: #E3F2FD; color: #0D47A1; }}
-
-        /* Card Grid: 1 แถวใส่ 4 หมากพอดี */
-        .card-grid {{
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 6px;
-        }}
-
-        .card-item {{
-            background: #FFFFFF;
-            border: 2px solid #CFD8DC;
-            border-radius: 8px;
-            padding: 8px 2px;
-            text-align: center;
-            font-size: 13px;
-            font-weight: bold;
-            cursor: grab;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            touch-action: none;
-            transition: transform 0.15s, border-color 0.15s;
-        }}
-        .card-item.red {{ color: #D32F2F; border-color: #EF9A9A; background-color: #FFEBEE; }}
-        .card-item.black {{ color: #212121; border-color: #B0BEC5; background-color: #ECEFF1; }}
-        .card-item.selected {{ border: 2.5px solid #1976D2; box-shadow: 0 0 6px rgba(25, 118, 210, 0.6); transform: translateY(-3px); }}
-        .card-item.dragging {{ opacity: 0.4; }}
-
-        .play-btn {{
-            width: 100%;
-            margin-top: 8px;
-            padding: 8px;
-            background-color: #1976D2;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-weight: bold;
-            font-size: 14px;
-            cursor: pointer;
-        }}
-        .play-btn:disabled {{ background-color: #B0BEC5; cursor: not-allowed; }}
-    </style>
-    </head>
-    <body>
-
-    <div id="drop-zone" class="drop-zone">
-        🎯 ลากไพ่มาวางที่นี่ หรือ แตะเลือก ({req_cnt} ใบ)
-    </div>
-
-    <div id="card-grid" class="card-grid"></div>
-
-    <button id="submit-btn" class="play-btn" disabled onclick="submitPlay()">🚀 ลงหมากที่เลือก</button>
-
-    <script>
-        let cardsData = {json.dumps(cards_payload)};
-        let reqCount = {req_cnt};
-        let isDisabled = {str(disabled).lower()};
-        let selectedIndices = [];
-
-        function renderCards() {{
-            const grid = document.getElementById('card-grid');
-            grid.innerHTML = '';
-
-            cardsData.forEach((card, idx) => {{
-                const el = document.createElement('div');
-                el.className = `card-item ${{card.is_red ? 'red' : 'black'}} ${{selectedIndices.includes(idx) ? 'selected' : ''}}`;
-                el.setAttribute('draggable', isDisabled ? 'false' : 'true');
-                el.dataset.index = idx;
-                el.innerHTML = `<div>${{card.symbol}}${{card.label}}</div>`;
-
-                // Tap / Click to select
-                el.onclick = () => {{
-                    if (isDisabled) return;
-                    if (selectedIndices.includes(idx)) {{
-                        selectedIndices = selectedIndices.filter(i => i !== idx);
-                    }} else {{
-                        if (selectedIndices.length < reqCount) {{
-                            selectedIndices.push(idx);
-                        }} else if (reqCount === 1) {{
-                            selectedIndices = [idx];
-                        }}
-                    }}
-                    renderCards();
-                }};
-
-                // HTML5 Drag & Drop
-                el.ondragstart = (e) => {{
-                    e.dataTransfer.setData('text/plain', idx);
-                    el.classList.add('dragging');
-                }};
-                el.ondragend = () => el.classList.remove('dragging');
-
-                el.ondragover = (e) => e.preventDefault();
-                el.ondrop = (e) => {{
-                    e.preventDefault();
-                    const srcIdx = parseInt(e.dataTransfer.getData('text/plain'));
-                    if (!isNaN(srcIdx) && srcIdx !== idx) {{
-                        // สลับตำแหน่งไพ่จากการลากจัดเรียง
-                        const temp = cardsData[srcIdx];
-                        cardsData[srcIdx] = cardsData[idx];
-                        cardsData[idx] = temp;
-                        selectedIndices = [];
-                        renderCards();
-                    }}
-                }};
-
-                grid.appendChild(el);
-            }});
-
-            const btn = document.getElementById('submit-btn');
-            btn.disabled = isDisabled || (selectedIndices.length !== reqCount);
-            btn.innerText = `🚀 ลงหมากที่เลือก (${{selectedIndices.length}}/${{reqCount}})`;
-        }}
-
-        // Dropzone drag over / drop
-        const dz = document.getElementById('drop-zone');
-        dz.ondragover = (e) => {{ e.preventDefault(); dz.classList.add('hover'); }};
-        dz.ondragleave = () => dz.classList.remove('hover');
-        dz.ondrop = (e) => {{
-            e.preventDefault();
-            dz.classList.remove('hover');
-            const srcIdx = parseInt(e.dataTransfer.getData('text/plain'));
-            if (!isNaN(srcIdx) && !selectedIndices.includes(srcIdx) && selectedIndices.length < reqCount) {{
-                selectedIndices.push(srcIdx);
-                renderCards();
-            }}
-        }};
-
-        // Touch Drag & Drop support สำหรับจอมือถือ
-        let touchSrcIdx = null;
-        const grid = document.getElementById('card-grid');
-        grid.addEventListener('touchstart', (e) => {{
-            const cardEl = e.target.closest('.card-item');
-            if (cardEl) {{
-                touchSrcIdx = parseInt(cardEl.dataset.index);
-            }}
-        }}, {{passive: true}});
-
-        grid.addEventListener('touchend', (e) => {{
-            if (touchSrcIdx !== null) {{
-                const touch = e.changedTouches[0];
-                const targetEl = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.card-item');
-                if (targetEl) {{
-                    const targetIdx = parseInt(targetEl.dataset.index);
-                    if (!isNaN(targetIdx) && targetIdx !== touchSrcIdx) {{
-                        const temp = cardsData[touchSrcIdx];
-                        cardsData[touchSrcIdx] = cardsData[targetIdx];
-                        cardsData[targetIdx] = temp;
-                        selectedIndices = [];
-                        renderCards();
-                    }}
-                }}
-                touchSrcIdx = null;
-            }}
-        }});
-
-        function submitPlay() {{
-            if (selectedIndices.length === reqCount && !isDisabled) {{
-                const parentUrl = new URL(window.parent.location.href);
-                parentUrl.searchParams.set('play_action', selectedIndices.join(','));
-                parentUrl.searchParams.set('ts', Date.now());
-                window.parent.location.href = parentUrl.toString();
-            }}
-        }}
-
-        renderCards();
-    </script>
-    </body>
-    </html>
-    """
-    components.html(html_code, height=210)
+    key = f"tui_select_{my_p_idx}_{len(hand)}_{req_cnt}_{server.round_num}_{len(server.current_plays)}_{key_suffix}"
+    return tui_card_selector(cards=cards_payload, req_cnt=req_cnt, disabled=disabled, key=key)
 
 # ---------------------------------------------------------
 # 🚪 PHASE 0: Lobby
@@ -469,8 +600,8 @@ elif server.phase == "bidding":
             st.write(f"• P{p_idx+1} ({p_n}): {status}")
 
     if my_role != "Spectator":
-        st.caption("🎴 ไพ่ในมือคุณ (จัดเรียงลากสลับตำแหน่งได้):")
-        render_drag_and_drop_hand(server.hands[my_p_idx], req_cnt=1, disabled=True)
+        st.caption("🎴 ไพ่ในมือคุณ:")
+        render_hand_selector(server.hands[my_p_idx], req_cnt=1, disabled=True, key_suffix="bid")
 
     if all(server.bids_entered):
         server.phase = "playing"
@@ -508,7 +639,7 @@ elif server.phase == "playing":
 
     st.caption(f"🃏 รอบ {server.round_num}/15 | Leader: **P{server.leader+1} ({get_player_name(server.leader)})**")
 
-    # 📜 สรุปไม้ล่าสุด (นำกลับมาตามที่ขอ: ใครลงอะไร ใครได้กิน)
+    # 📜 สรุปไม้ล่าสุด (ใครลงอะไร / ใครได้กิน)
     if getattr(server, 'last_trick_summary', None):
         st.markdown("📜 **ไม้ล่าสุด (ใครลงอะไร / ใครได้กิน):**")
         s = server.last_trick_summary
@@ -552,9 +683,10 @@ elif server.phase == "playing":
                 elif "4" in play_type: req_cnt = 4
                 elif "5" in play_type: req_cnt = 5
 
-                # ประมวลผลเมื่อกดส่งหมากจาก JS Drag Component
-                if played_indices_from_js is not None and len(played_indices_from_js) == req_cnt:
-                    selected_cards = [my_hand[i] for i in played_indices_from_js if i < len(my_hand)]
+                played_indices = render_hand_selector(my_hand, req_cnt=req_cnt, disabled=False, key_suffix="play_lead")
+
+                if played_indices is not None and len(played_indices) == req_cnt:
+                    selected_cards = [my_hand[i] for i in played_indices if i < len(my_hand)]
                     if len(selected_cards) == req_cnt:
                         ptype_map = {"เม็ด": "Med", "ตุ่ย": "Tui", "ซาฮู้": "Sa-Hoo", "ซาจุก": "Sa-Jut", "โฟจุก": "Pho-Jut", "โฟฮู้": "Pho-Hoo", "ไฟฟ์ฮู้": "Five-Hoo"}
                         matched_type = "Med"
@@ -565,27 +697,25 @@ elif server.phase == "playing":
                         server.current_play_type = matched_type
                         st.rerun()
 
-                render_drag_and_drop_hand(my_hand, req_cnt=req_cnt, disabled=False)
-
             # Follower ลงตาม
             elif server.leader in server.current_plays and my_p_idx not in server.current_plays:
                 curr_req = min(len(server.current_plays[server.leader]), len(my_hand))
                 st.write(f"🃏 **ลงหมากตาม (เลือกลาก/แตะ {curr_req} ใบ):**")
                 
-                if played_indices_from_js is not None and len(played_indices_from_js) == curr_req:
-                    selected_cards = [my_hand[i] for i in played_indices_from_js if i < len(my_hand)]
+                played_indices = render_hand_selector(my_hand, req_cnt=curr_req, disabled=False, key_suffix="play_follow")
+
+                if played_indices is not None and len(played_indices) == curr_req:
+                    selected_cards = [my_hand[i] for i in played_indices if i < len(my_hand)]
                     if len(selected_cards) == curr_req:
                         server.current_plays[my_p_idx] = selected_cards
                         st.rerun()
 
-                render_drag_and_drop_hand(my_hand, req_cnt=curr_req, disabled=False)
-
             elif my_p_idx in server.current_plays:
                 st.success("✅ คุณลงหมากเรียบร้อย 🔒 (รอคนอื่นลงให้ครบ...)")
-                render_drag_and_drop_hand(my_hand, req_cnt=1, disabled=True)
+                render_hand_selector(my_hand, req_cnt=1, disabled=True, key_suffix="played_wait")
             else:
                 st.info(f"⏳ รอ P{server.leader+1} ({get_player_name(server.leader)}) เปิดหมาก...")
-                render_drag_and_drop_hand(my_hand, req_cnt=1, disabled=True)
+                render_hand_selector(my_hand, req_cnt=1, disabled=True, key_suffix="leader_wait")
 
     else:
         server.phase = "round_summary"
