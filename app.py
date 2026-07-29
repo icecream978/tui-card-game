@@ -33,7 +33,59 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 🧠 ระบบแชร์ข้อมูลห้องเกมทั้งหมด (Global Room Manager)
+# 🧠 ฟังก์ชันตรวจสอบชุดหมากใหม่ (Helper Functions)
+# ---------------------------------------------------------
+def is_jut(piece):
+    """เช็คว่าเป็นตัวจุดหรือไม่ (ไม่ใช่ชุดฮู้)"""
+    return piece.rank not in ["Maa", "Pao", "Ruea", "Tee", "Bin", "Chang"]
+
+def get_available_sa_jut(hand):
+    """หาชุดซาจุด (จุดสีเดียวกัน 3 ใบ)"""
+    red_juts = [p for p in hand if is_jut(p) and p.color == "Red"]
+    black_juts = [p for p in hand if is_jut(p) and p.color == "Black"]
+    res = []
+    if len(red_juts) >= 3:
+        res.append(red_juts[:3])
+    if len(black_juts) >= 3:
+        res.append(black_juts[:3])
+    return res
+
+def get_available_pho_jut(hand):
+    """หาชุดโฟจุด (จุดสีเดียวกัน 4 ใบ)"""
+    red_juts = [p for p in hand if is_jut(p) and p.color == "Red"]
+    black_juts = [p for p in hand if is_jut(p) and p.color == "Black"]
+    res = []
+    if len(red_juts) >= 4:
+        res.append(red_juts[:4])
+    if len(black_juts) >= 4:
+        res.append(black_juts[:4])
+    return res
+
+def get_available_pho_hoo(hand):
+    """หาชุดโฟฮู้ (ซาฮู้ 3 ใบ + บิน หรือ ช้าง 1 ใบ สีเดียวกัน)"""
+    sahoos = get_available_sahoos(hand)
+    res = []
+    for s_type, s_cards in sahoos:
+        color = s_cards[0].color
+        extra_candidates = [p for p in hand if p not in s_cards and p.color == color and p.rank in ["Bin", "Chang"]]
+        for extra in extra_candidates:
+            res.append((f"{s_type} + {extra.rank}", s_cards + [extra]))
+    return res
+
+def get_available_five_hoo(hand):
+    """หาชุดไฟฟ์ฮู้ (ซาฮู้ 3 ใบ + บิน 1 ใบ + ช้าง 1 ใบ สีเดียวกัน)"""
+    sahoos = get_available_sahoos(hand)
+    res = []
+    for s_type, s_cards in sahoos:
+        color = s_cards[0].color
+        bins = [p for p in hand if p not in s_cards and p.color == color and p.rank == "Bin"]
+        changs = [p for p in hand if p not in s_cards and p.color == color and p.rank == "Chang"]
+        if bins and changs:
+            res.append((f"{s_type} + บิน + ช้าง", s_cards + [bins[0], changs[0]]))
+    return res
+
+# ---------------------------------------------------------
+# 🏠 ระบบแชร์ข้อมูลห้องเกมทั้งหมด (Global Room Manager)
 # ---------------------------------------------------------
 class GameServer:
     def __init__(self, room_id):
@@ -61,7 +113,7 @@ class GameServer:
 
 class RoomManager:
     def __init__(self):
-        self.rooms = {} # เก็บห้องรูปแบบ {"ROOM_NAME": GameServer()}
+        self.rooms = {}
 
     def get_or_create_room(self, room_id):
         room_id = room_id.strip().upper()
@@ -135,7 +187,6 @@ if not st.session_state.current_room:
 room_code = st.session_state.current_room
 server = room_manager.get_or_create_room(room_code)
 
-# เพิ่มผู้เล่นลงห้อง
 if my_id not in server.players:
     assigned_p_index = len([p for p in server.players.values() if p["role"].startswith("P")])
     if assigned_p_index < 4:
@@ -156,7 +207,6 @@ my_role = my_player_info["role"]
 my_name = my_player_info["name"]
 my_p_idx = my_player_info["p_idx"]
 
-# Header แสดงข้อมูลห้อง
 col_h1, col_h2, col_h3 = st.columns([2, 1, 1])
 with col_h1:
     st.markdown(f"🏠 **ห้อง: {room_code}** | คุณ: **{my_name}** (`{my_role}`)")
@@ -327,6 +377,7 @@ elif server.phase == "bidding":
 elif server.phase == "playing":
     st.markdown(f"### 🃏 รอบที่ {server.round_num}/15")
 
+    # เมื่อทุกคนลงหมากครบ 4 คน -> คำนวณผลชนะ
     if len(server.current_plays) == 4:
         for p_idx, chosen_list in server.current_plays.items():
             for target_p in chosen_list:
@@ -339,14 +390,18 @@ elif server.phase == "playing":
         winner = resolve_trick(server.current_plays, server.current_play_type, server.leader)
         w_name = get_player_name(winner)
 
+        # 🎯 ปรับปรุงแต้มกินตามจำนวนใบที่ผู้ชนะลงกิน!
+        cards_won_count = len(server.current_plays[winner])
+        server.tricks_won[winner] += cards_won_count
+
         server.last_trick_summary = {
             "plays": {p_idx: [str(x) for x in server.current_plays[p_idx]] for p_idx in range(4)},
             "winner_idx": winner,
             "winner_name": w_name,
-            "play_type": server.current_play_type
+            "play_type": server.current_play_type,
+            "cards_won": cards_won_count
         }
 
-        server.tricks_won[winner] += 1
         server.leader = winner
         server.current_plays = {}
         st.rerun()
@@ -356,7 +411,7 @@ elif server.phase == "playing":
     for i in range(4):
         p_n = get_player_name(i)
         won, bid = server.tricks_won[i], server.bids[i]
-        s_cols[i].caption(f"**P{i+1} {p_n}**: กิน **{won}/{bid}**")
+        s_cols[i].caption(f"**P{i+1} {p_n}**: กิน **{won}/{bid}** แต้ม")
 
     render_played_tracker(getattr(server, 'played_pieces', []))
 
@@ -364,21 +419,22 @@ elif server.phase == "playing":
         summary = server.last_trick_summary
         w_idx = summary['winner_idx']
         w_name = summary['winner_name']
+        pts = summary.get('cards_won', 1)
 
         if my_role != "Spectator":
             if my_p_idx == w_idx:
-                st.success(f"🥳 **สะใจ! คุณ ({my_name}) เป็นผู้ชนะกินไม้นี้!** 👑✨")
+                st.success(f"🥳 **สะใจ! คุณ ({my_name}) ชนะกินไม้นี้ ได้ไป +{pts} แต้ม!** 👑✨")
             else:
-                st.error(f"😭 **โฮ... คุณ ({my_name}) โดน P{w_idx+1} ({w_name}) กินไปซะแล้ว!** 💸🌧️💔")
+                st.error(f"😭 **โฮ... คุณ ({my_name}) โดน P{w_idx+1} ({w_name}) กินไป (+{pts} แต้ม)!** 💸🌧️")
 
-        with st.expander(f"🔔 **สรุปผลไม้ล่าสุด:** 🏆 P{w_idx+1} ({w_name}) ชนะกินไม้!", expanded=True):
+        with st.expander(f"🔔 **สรุปผลไม้ล่าสุด:** 🏆 P{w_idx+1} ({w_name}) ชนะกิน (+{pts} แต้ม)", expanded=True):
             for p_i in range(4):
                 p_n = get_player_name(p_i)
                 cards_str = ", ".join(summary['plays'][p_i])
                 if p_i == w_idx:
                     st.markdown(f"🏆 **P{p_i+1} ({p_n})**: `{cards_str}` **(ชนะกินไม้! 🥳🔥)**")
                 else:
-                    st.markdown(f"😭 🌧️ **P{p_i+1} ({p_n})**: `{cards_str}` *(โดนกิน... 💸)*")
+                    st.markdown(f"😭 **P{p_i+1} ({p_n})**: `{cards_str}` *(หมก/ทิ้ง)*")
 
     st.divider()
 
@@ -389,6 +445,9 @@ elif server.phase == "playing":
         if my_role != "Spectator":
             my_hand_indexed = list(enumerate(server.hands[my_p_idx]))
 
+            # ---------------------------------------------------------
+            # 👑 ตัวเลือกของ LEADER (เปิดหมาก)
+            # ---------------------------------------------------------
             if my_p_idx == server.leader and my_p_idx not in server.current_plays:
                 with st.container(border=True):
                     st.subheader("🔥 ถึงตาคุณเปิดหมากนำ (Leader):")
@@ -396,39 +455,76 @@ elif server.phase == "playing":
 
                     play_options = ["Med (เม็ด - 1 ใบ)"]
                     if can_play_tui(leader_hand): play_options.append("Tui (ตุ่ย - คู่ 2 ใบ)")
-                    if can_play_sahoo(leader_hand): play_options.append("Sa-Hoo (ซาฮู้ - ชุด 3 ใบ)")
+                    if can_play_sahoo(leader_hand): play_options.append("Sa-Hoo (ซาฮู้ - 3 ใบ)")
+                    if get_available_sa_jut(leader_hand): play_options.append("Sa-Jut (ซาจุด - 3 ใบ)")
+                    if get_available_pho_jut(leader_hand): play_options.append("Pho-Jut (โฟจุด - 4 ใบ)")
+                    if get_available_pho_hoo(leader_hand): play_options.append("Pho-Hoo (โฟฮู้ - 4 ใบ)")
+                    if get_available_five_hoo(leader_hand): play_options.append("Five-Hoo (ไฟฟ์ฮู้ - 5 ใบ)")
 
                     play_type = st.radio("เลือกรูปแบบการลง:", play_options, horizontal=True)
-                    type_code = "Med" if "Med" in play_type else ("Tui" if "Tui" in play_type else "Sa-Hoo")
 
-                    if type_code == "Med":
-                        sel = st.selectbox("เลือกหมาก:", my_hand_indexed, format_func=lambda x: f"ใบที่ {x[0]+1}: {str(x[1])}")
+                    if "Med" in play_type:
+                        sel = st.selectbox("เลือกหมาก 1 ใบ:", my_hand_indexed, format_func=lambda x: f"ใบที่ {x[0]+1}: {str(x[1])}")
                         if st.button("🚀 ลงหมากนำ!", type="primary", use_container_width=True):
                             server.current_plays[server.leader] = [sel[1]]
-                            server.current_play_type = type_code
+                            server.current_play_type = "Med"
                             st.rerun()
 
-                    elif type_code == "Tui":
+                    elif "Tui" in play_type:
                         tui_pairs = get_available_tuis(leader_hand)
                         sel_idx = st.selectbox("เลือกคู่ตุ่ย:", range(len(tui_pairs)), format_func=lambda idx: f"{tui_pairs[idx][0]} + {tui_pairs[idx][1]}")
                         if st.button("🚀 ลงหมากนำ!", type="primary", use_container_width=True):
                             server.current_plays[server.leader] = tui_pairs[sel_idx]
-                            server.current_play_type = type_code
+                            server.current_play_type = "Tui"
                             st.rerun()
 
-                    elif type_code == "Sa-Hoo":
+                    elif "Sa-Hoo" in play_type:
                         sahoo_sets = get_available_sahoos(leader_hand)
                         sel_idx = st.selectbox("เลือกชุดซาฮู้:", range(len(sahoo_sets)), format_func=lambda idx: f"{sahoo_sets[idx][0]}")
                         if st.button("🚀 ลงหมากนำ!", type="primary", use_container_width=True):
                             server.current_plays[server.leader] = sahoo_sets[sel_idx][1]
-                            server.current_play_type = type_code
+                            server.current_play_type = "Sa-Hoo"
                             st.rerun()
 
+                    elif "Sa-Jut" in play_type:
+                        sajut_sets = get_available_sa_jut(leader_hand)
+                        sel_idx = st.selectbox("เลือกชุดซาจุด:", range(len(sajut_sets)), format_func=lambda idx: ", ".join([str(p) for p in sajut_sets[idx]]))
+                        if st.button("🚀 ลงหมากนำ!", type="primary", use_container_width=True):
+                            server.current_plays[server.leader] = sajut_sets[sel_idx]
+                            server.current_play_type = "Sa-Jut"
+                            st.rerun()
+
+                    elif "Pho-Jut" in play_type:
+                        phojut_sets = get_available_pho_jut(leader_hand)
+                        sel_idx = st.selectbox("เลือกชุดโฟจุด:", range(len(phojut_sets)), format_func=lambda idx: ", ".join([str(p) for p in phojut_sets[idx]]))
+                        if st.button("🚀 ลงหมากนำ!", type="primary", use_container_width=True):
+                            server.current_plays[server.leader] = phojut_sets[sel_idx]
+                            server.current_play_type = "Pho-Jut"
+                            st.rerun()
+
+                    elif "Pho-Hoo" in play_type:
+                        pho_hoo_sets = get_available_pho_hoo(leader_hand)
+                        sel_idx = st.selectbox("เลือกชุดโฟฮู้:", range(len(pho_hoo_sets)), format_func=lambda idx: f"{pho_hoo_sets[idx][0]}")
+                        if st.button("🚀 ลงหมากนำ!", type="primary", use_container_width=True):
+                            server.current_plays[server.leader] = pho_hoo_sets[sel_idx][1]
+                            server.current_play_type = "Pho-Hoo"
+                            st.rerun()
+
+                    elif "Five-Hoo" in play_type:
+                        five_hoo_sets = get_available_five_hoo(leader_hand)
+                        sel_idx = st.selectbox("เลือกชุดไฟฟ์ฮู้:", range(len(five_hoo_sets)), format_func=lambda idx: f"{five_hoo_sets[idx][0]}")
+                        if st.button("🚀 ลงหมากนำ!", type="primary", use_container_width=True):
+                            server.current_plays[server.leader] = five_hoo_sets[sel_idx][1]
+                            server.current_play_type = "Five-Hoo"
+                            st.rerun()
+
+            # ---------------------------------------------------------
+            # 👤 ตัวเลือกของผู้เล่นตาม (Followers)
+            # ---------------------------------------------------------
             elif server.leader in server.current_plays and my_p_idx not in server.current_plays:
                 with st.container(border=True):
-                    type_code = server.current_play_type
-                    req_count = 1 if type_code == "Med" else (2 if type_code == "Tui" else 3)
-                    curr_req = min(req_count, len(server.hands[my_p_idx]))
+                    leader_card_count = len(server.current_plays[server.leader])
+                    curr_req = min(leader_card_count, len(server.hands[my_p_idx]))
 
                     st.subheader(f"🃏 ถึงตาคุณลงหมากตาม (เลือก {curr_req} ใบ):")
                     
