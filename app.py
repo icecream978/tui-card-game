@@ -34,6 +34,15 @@ st.markdown("""
         font-weight: bold !important;
         transition: all 0.15s ease-in-out !important;
     }
+
+    /* บีบขนาดรูปภาพไพ่/หมากให้ย่อเล็กลงพอดีตา */
+    div[data-testid="stImage"] img {
+        max-height: 80px !important;
+        width: auto !important;
+        object-fit: contain !important;
+        margin: 0 auto !important;
+        display: block !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -46,7 +55,7 @@ RANK_THAI = {
     "Chang": "ช้าง", "CHANG": "ช้าง", "chang": "ช้าง",
     "Ruea": "เรือ", "RUEA": "เรือ", "ruea": "เรือ", "Rua": "เรือ", "RUA": "เรือ",
     "Maa": "ม้า", "MAA": "ม้า", "maa": "ม้า", "Ma": "ม้า",
-    "Pao": "เผ่า", "PAO": "เผ่า", "pao": "เผ่า",
+    "Pao": "เผ่า", "PAO": "เผ่า", "pao": "เผ่า", "Phao": "เผ่า", "PHAO": "เผ่า", "phao": "เผ่า",
     "Jut": "จุก", "JUT": "จุก", "jut": "จุก", "Juk": "จุก"
 }
 
@@ -61,18 +70,19 @@ def get_card_image_path(card):
     color = "red" if str(card.color).strip().lower() in ["red", "r"] else "black"
     raw_rank = str(card.rank).strip().lower()
     
+    # แมปคำเรียกต่างๆ ให้ชี้ตรงกับชื่อไฟล์รูปภาพในโฟลเดอร์ images/
     rank_map = {
         "ตี่": "tee", "tee": "tee",
         "บิน": "bin", "bin": "bin",
         "ช้าง": "chang", "chang": "chang",
         "เรือ": "ruea", "ruea": "ruea", "rua": "ruea",
         "ม้า": "maa", "maa": "maa", "ma": "maa",
-        "เผ่า": "pao", "pao": "pao",
+        "เผ่า": "pao", "pao": "pao", "phao": "pao",
         "จุก": "jut", "jut": "jut", "juk": "jut"
     }
     mapped_rank = rank_map.get(raw_rank, raw_rank)
     
-    # ตรวจหาไฟล์ทั้ง .jpg และ .png (รองรับทั้งคู่)
+    # รองรับทั้ง .jpg และ .png
     path_jpg = f"images/{color}_{mapped_rank}.jpg"
     path_png = f"images/{color}_{mapped_rank}.png"
     
@@ -403,19 +413,48 @@ elif server.phase == "playing":
 
     st.caption(f"🃏 รอบ {server.round_num}/15 | Leader: **P{server.leader+1} ({get_player_name(server.leader)})**")
 
-    # 📜 สรุปไม้ล่าสุด
+    # 📜 สรุปไม้ล่าสุด (แบบประหยัดพื้นที่ & ดีไซน์กะทัดรัด)
     if getattr(server, 'last_trick_summary', None):
-        st.markdown("📜 **ไม้ล่าสุด (ใครลงอะไร / ใครได้กิน):**")
         s = server.last_trick_summary
-        cols_summary = st.columns(4)
+        w_idx = s["winner_idx"]
+        w_name = s["winner_name"]
+        
+        cards_html = ""
         for i in range(4):
             played_cards = s["plays"].get(i, [])
-            cards_str = " ".join([card_label(c) for c in played_cards]) if played_cards else "ไม่ได้ลง"
-            if i == s["winner_idx"]:
-                cols_summary[i].success(f"🏆 **P{i+1}**\n\n{cards_str}\n\n*(กิน +{s['cards_won']})*")
+            cards_str = " ".join([card_label(c) for c in played_cards]) if played_cards else "-"
+            
+            if i == w_idx:
+                # ผู้ชนะไม้: ไฮไลท์กรอบเขียวเข้ม
+                cards_html += f"""
+                <div style="flex: 1; background: #e8f5e9; border: 1.5px solid #2e7d32; border-radius: 8px; padding: 4px 2px; text-align: center; min-width: 0;">
+                    <div style="font-size: 10px; font-weight: bold; color: #1b5e20; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">🏆 P{i+1}</div>
+                    <div style="font-size: 13px; font-weight: bold; color: #1b5e20; margin-top: 1px;">{cards_str}</div>
+                </div>
+                """
             else:
-                cols_summary[i].info(f"👤 P{i+1}\n\n{cards_str}")
-        st.divider()
+                # ผู้เล่นอื่น: สีโทนเรียบประหยัดตา
+                cards_html += f"""
+                <div style="flex: 1; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 4px 2px; text-align: center; min-width: 0;">
+                    <div style="font-size: 10px; color: #6c757d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">P{i+1}</div>
+                    <div style="font-size: 13px; font-weight: bold; color: #212529; margin-top: 1px;">{cards_str}</div>
+                </div>
+                """
+
+        summary_box = f"""
+        <div style="background: #ffffff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 6px 8px; margin-bottom: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-size: 11px; font-weight: bold; color: #555;">📜 ไม้ล่าสุด</span>
+                <span style="font-size: 10px; font-weight: bold; background: #fff3cd; color: #856404; padding: 1px 6px; border-radius: 8px; border: 1px solid #ffeeba;">
+                    🎉 P{w_idx+1} ({w_name}) กิน +{s['cards_won']}
+                </span>
+            </div>
+            <div style="display: flex; gap: 3px;">
+                {cards_html}
+            </div>
+        </div>
+        """
+        st.markdown(summary_box, unsafe_allow_html=True)
 
     with st.expander("📊 ดูแต้ม / สถานะการกินรวม", expanded=False):
         for i in range(4):
