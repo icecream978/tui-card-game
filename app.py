@@ -1,6 +1,7 @@
 import streamlit as st
 import random
 import time
+import os
 from streamlit_autorefresh import st_autorefresh
 from tui_engine import (
     deal_round, can_play_tui, can_play_sahoo, 
@@ -9,7 +10,7 @@ from tui_engine import (
 )
 
 # ---------------------------------------------------------
-# 📱 ตั้งค่าหน้าจอ & CSS ตกแต่งปุ่มให้เหมือนไพ่จริง
+# 📱 ตั้งค่าหน้าจอ & CSS สำหรับมือถือ
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="เกมตุ่ย Mobile", 
@@ -17,19 +18,17 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# รีเฟรชอัตโนมัติทุก 2 วินาที
-st_autorefresh(interval=2000, key="datarefresh")
+# รีเฟรชอัตโนมัติทุก 3 วินาที (ช่วยลดภาระ Server ให้ลื่นขึ้น)
+st_autorefresh(interval=3000, key="datarefresh")
 
 st.markdown("""
 <style>
-    /* จัดแต่ง Padding สำหรับมือถือ */
     .block-container { padding-top: 0.5rem; padding-bottom: 0.5rem; padding-left: 0.3rem; padding-right: 0.3rem; }
     div[data-testid="stSidebarNav"] { display: none; }
     div[data-testid="stHorizontalBlock"] { gap: 0.2rem; }
     .stAlert { padding: 4px 8px !important; margin-bottom: 4px !important; }
     hr { margin: 6px 0 !important; }
 
-    /* ตกแต่งปุ่มทั่วไป */
     .stButton > button {
         border-radius: 10px !important;
         font-weight: bold !important;
@@ -39,7 +38,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 🇹🇭 แปลภาษายศหมากไทย
+# 🇹🇭 แปลภาษายศหมากไทย & จัดการรูปภาพ
 # ---------------------------------------------------------
 RANK_THAI = {
     "Tee": "ตี่", "TEE": "ตี่", "tee": "ตี่",
@@ -57,6 +56,31 @@ def get_rank_thai(rank):
 def card_label(card):
     symbol = "🔴" if str(card.color).strip().lower() in ["red", "r"] else "⚫"
     return f"{symbol}{get_rank_thai(card.rank)}"
+
+def get_card_image_path(card):
+    color = "red" if str(card.color).strip().lower() in ["red", "r"] else "black"
+    raw_rank = str(card.rank).strip().lower()
+    
+    rank_map = {
+        "ตี่": "tee", "tee": "tee",
+        "บิน": "bin", "bin": "bin",
+        "ช้าง": "chang", "chang": "chang",
+        "เรือ": "ruea", "ruea": "ruea", "rua": "ruea",
+        "ม้า": "maa", "maa": "maa", "ma": "maa",
+        "เผ่า": "pao", "pao": "pao",
+        "จุก": "jut", "jut": "jut", "juk": "jut"
+    }
+    mapped_rank = rank_map.get(raw_rank, raw_rank)
+    
+    # ตรวจหาไฟล์ทั้ง .jpg และ .png (รองรับทั้งคู่)
+    path_jpg = f"images/{color}_{mapped_rank}.jpg"
+    path_png = f"images/{color}_{mapped_rank}.png"
+    
+    if os.path.exists(path_jpg):
+        return path_jpg
+    elif os.path.exists(path_png):
+        return path_png
+    return None
 
 # ---------------------------------------------------------
 # 🧠 ฟังก์ชันตรวจสอบชุดหมาก
@@ -151,31 +175,35 @@ if "selected_cards" not in st.session_state:
 my_id = st.session_state.my_id
 
 # ---------------------------------------------------------
-# 🎴 ระบบแสดงผลไพ่ & ช่องลงหมาก แบบ Native ที่สวยงาม
+# 🎴 ระบบแสดงผลไพ่ (รองรับการแสดงรูปภาพ)
 # ---------------------------------------------------------
 def render_pretty_card_board(hand, req_cnt=1, disabled=False):
     sel = st.session_state.selected_cards
-    # กรองเอาดรรชนีที่เกินไพ่ในมือออก
     sel = [i for i in sel if i < len(hand)]
     st.session_state.selected_cards = sel
 
-    # 1. 🎯 ช่องลงหมาก (Staging Zone)
+    # 1. 🎯 ช่องลงหมาก
     st.markdown(f"##### 🎯 ช่องลงหมาก (`{len(sel)}/{req_cnt}` ใบ)")
     
     if not sel:
         st.info("👇 แตะไพ่ในมือด้านล่างเพื่อย้ายขึ้นมาลงในช่องนี้", icon="ℹ️")
     else:
-        # แสดงไพ่ที่ถูกเลือกไว้
         drop_cols = st.columns(max(len(sel), 1))
         for d_idx, c_idx in enumerate(sel):
             card = hand[c_idx]
-            if drop_cols[d_idx].button(f"❌ {card_label(card)}", key=f"drop_{d_idx}_{c_idx}"):
-                st.session_state.selected_cards.remove(c_idx)
-                st.rerun()
+            img_path = get_card_image_path(card)
+            
+            with drop_cols[d_idx]:
+                if img_path:
+                    st.image(img_path, use_container_width=True)
+                
+                if st.button(f"❌ {card_label(card)}", key=f"drop_{d_idx}_{c_idx}", use_container_width=True):
+                    st.session_state.selected_cards.remove(c_idx)
+                    st.rerun()
 
     st.markdown("---")
 
-    # 2. 🎴 ไพ่ในมือ (จัดเรียง 4 ใบต่อ 1 แถว)
+    # 2. 🎴 ไพ่ในมือ (4 ใบต่อ 1 แถว)
     st.markdown("##### 🎴 ไพ่ในมือคุณ:")
     
     for row_start in range(0, len(hand), 4):
@@ -185,25 +213,28 @@ def render_pretty_card_board(hand, req_cnt=1, disabled=False):
             if card_idx < len(hand):
                 card = hand[card_idx]
                 is_sel = card_idx in sel
+                img_path = get_card_image_path(card)
                 
                 label = f"✅ {card_label(card)}" if is_sel else card_label(card)
                 btn_type = "primary" if is_sel else "secondary"
-
-                # คลิกได้ถ้ายังกดไม่ครบ หรือถ้าเลือกไพ่อื่นแทน
                 can_click = not disabled and (is_sel or len(sel) < req_cnt)
 
-                if cols[col_idx].button(
-                    label, 
-                    key=f"card_hand_{card_idx}", 
-                    type=btn_type,
-                    disabled=not can_click,
-                    use_container_width=True
-                ):
-                    if is_sel:
-                        st.session_state.selected_cards.remove(card_idx)
-                    else:
-                        st.session_state.selected_cards.append(card_idx)
-                    st.rerun()
+                with cols[col_idx]:
+                    if img_path:
+                        st.image(img_path, use_container_width=True)
+                    
+                    if st.button(
+                        label, 
+                        key=f"card_hand_{card_idx}", 
+                        type=btn_type,
+                        disabled=not can_click,
+                        use_container_width=True
+                    ):
+                        if is_sel:
+                            st.session_state.selected_cards.remove(card_idx)
+                        else:
+                            st.session_state.selected_cards.append(card_idx)
+                        st.rerun()
 
     st.markdown("---")
 
@@ -217,7 +248,7 @@ def render_pretty_card_board(hand, req_cnt=1, disabled=False):
         key="btn_confirm_play"
     ):
         chosen = [hand[i] for i in sel if i < len(hand)]
-        st.session_state.selected_cards = []  # รีเซ็ต
+        st.session_state.selected_cards = []
         return chosen
 
     return None
