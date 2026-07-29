@@ -205,14 +205,13 @@ if "selected_cards" not in st.session_state:
 my_id = st.session_state.my_id
 
 # ---------------------------------------------------------
-# 🎴 ระบบแสดงผลไพ่ (ไม่มีช่องลงหมากแล้ว)
+# 🎴 ระบบแสดงผลไพ่
 # ---------------------------------------------------------
 def render_pretty_card_board(hand, req_cnt=1, disabled=False):
     sel = st.session_state.selected_cards
     sel = [i for i in sel if i < len(hand)]
     st.session_state.selected_cards = sel
 
-    # 1. 🎴 ไพ่ในมือ (เรียงตาราง 4 ใบต่อ 1 แถว)
     st.markdown("##### 🎴 ไพ่ในมือคุณ:")
     
     for row_start in range(0, len(hand), 4):
@@ -229,7 +228,6 @@ def render_pretty_card_board(hand, req_cnt=1, disabled=False):
                     if img_path:
                         st.image(img_path, use_container_width=True)
                     
-                    # ปุ่มเลือกไพ่ใต้รูป (กดเลือก/ยกเลิกตรงนี้ได้เลย)
                     btn_label = f"✅ {card_label(card)}" if is_sel else card_label(card)
                     btn_type = "primary" if is_sel else "secondary"
                     
@@ -242,10 +240,10 @@ def render_pretty_card_board(hand, req_cnt=1, disabled=False):
 
     st.markdown("---")
 
-    # 2. 🚀 ปุ่มยืนยันลงหมาก
-    is_ready = (len(sel) == req_cnt) and not disabled
+    target_cnt = min(req_cnt, len(hand))
+    is_ready = (len(sel) == target_cnt) and not disabled
     if st.button(
-        f"🚀 ลงหมากที่เลือก ({len(sel)}/{req_cnt})", 
+        f"🚀 ลงหมากที่เลือก ({len(sel)}/{target_cnt})", 
         type="primary", 
         disabled=not is_ready, 
         use_container_width=True,
@@ -379,6 +377,17 @@ elif server.phase == "bidding":
 # 🃏 PHASE 2: Playing
 # ---------------------------------------------------------
 elif server.phase == "playing":
+    
+    # ⚡ [AUTO-PLAY 1] สำหรับคนตาม (Followers): ถ้า Leader เปิดหมากแล้ว คนไหนมีไพ่เหลือ <= จำนวนที่ต้องลง -> ดึงไพ่ลงโต๊ะให้อัตโนมัติทันที
+    if server.leader in server.current_plays:
+        req_cnt = len(server.current_plays[server.leader])
+        for p_idx in range(4):
+            if p_idx not in server.current_plays:
+                p_hand = server.hands[p_idx]
+                if 0 < len(p_hand) <= req_cnt:
+                    server.current_plays[p_idx] = list(p_hand)
+
+    # ⚡ [AUTO-PLAY 2] เมื่อไพ่ลงครบ 4 คน -> คำนวณผลชนะ/แพ้ทันที
     if len(server.current_plays) == 4:
         for p_idx, chosen_list in server.current_plays.items():
             for target_p in chosen_list:
@@ -458,6 +467,10 @@ elif server.phase == "playing":
                 for k, v in ptype_map.items():
                     if k in play_type: matched_type = v; break
 
+                # ⚡ [AUTO-SELECT 3] ถ้าไพ่ในมือ Leader เหลือ <= req_cnt ให้ติ๊กเลือกไพ่ทั้งหมดให้อัตโนมัติทันที
+                if len(my_hand) <= req_cnt:
+                    st.session_state.selected_cards = list(range(len(my_hand)))
+
                 played_cards = render_pretty_card_board(my_hand, req_cnt=req_cnt, disabled=False)
                 if played_cards:
                     server.current_plays[server.leader] = played_cards
@@ -469,6 +482,10 @@ elif server.phase == "playing":
                 curr_req = min(len(server.current_plays[server.leader]), len(my_hand))
                 st.write(f"🃏 **ลงหมากตาม (เลือก {curr_req} ใบ):**")
                 
+                # ⚡ [AUTO-SELECT 4] ถ้าไพ่ในมือ Follower เหลือ <= curr_req ให้ติ๊กเลือกไพ่อัตโนมัติ
+                if len(my_hand) <= curr_req:
+                    st.session_state.selected_cards = list(range(len(my_hand)))
+
                 played_cards = render_pretty_card_board(my_hand, req_cnt=curr_req, disabled=False)
                 if played_cards:
                     server.current_plays[my_p_idx] = played_cards
