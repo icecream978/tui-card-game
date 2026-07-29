@@ -503,17 +503,52 @@ elif server.phase == "playing":
         st.rerun()
 
 # ---------------------------------------------------------
-# 🏁 PHASE 3: Round Summary
+# 🏁 PHASE 3: Round Summary (สรุปรอบ + รวมคะแนนสะสม)
 # ---------------------------------------------------------
 elif server.phase == "round_summary":
     st.subheader(f"🏁 สรุปรอบที่ {server.round_num}")
+
+    # 1. ⚡ แสดงผลลัพธ์หมากขาสุดท้าย ( Auto Play ) ให้เห็นชัดเจนว่าเกิดอะไรขึ้น
+    if getattr(server, 'last_trick_summary', None):
+        s = server.last_trick_summary
+        w_idx = s["winner_idx"]
+        w_name = s["winner_name"]
+        
+        cards_html = ""
+        for i in range(4):
+            played_cards = s["plays"].get(i, [])
+            cards_str = " ".join([card_label(c) for c in played_cards]) if played_cards else "-"
+            
+            if i == w_idx:
+                cards_html += f'<div style="flex: 1; background: rgba(46, 125, 50, 0.15); border: 1.5px solid #2e7d32; border-radius: 8px; padding: 4px 2px; text-align: center; min-width: 0;"><div style="font-size: 10px; font-weight: bold; color: #4caf50; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">🏆 P{i+1}</div><div style="font-size: 12px; font-weight: bold; color: var(--text-color); margin-top: 1px;">{cards_str}</div></div>'
+            else:
+                cards_html += f'<div style="flex: 1; background: var(--background-color); border: 1px solid rgba(128, 128, 128, 0.2); border-radius: 8px; padding: 4px 2px; text-align: center; min-width: 0;"><div style="font-size: 10px; color: var(--text-color); opacity: 0.7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">P{i+1}</div><div style="font-size: 12px; font-weight: bold; color: var(--text-color); margin-top: 1px;">{cards_str}</div></div>'
+
+        summary_box = f'<div style="background: var(--secondary-background-color); border: 1px solid rgba(128, 128, 128, 0.2); border-radius: 10px; padding: 6px 8px; margin-bottom: 12px;"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;"><span style="font-size: 11px; font-weight: bold; color: var(--text-color);">⚡ ผลลัพธ์ขาสุดท้าย (Auto Play)</span><span style="font-size: 10px; font-weight: bold; background: rgba(46, 125, 50, 0.2); color: #4caf50; padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(76, 175, 80, 0.3);">🎉 P{w_idx+1} ({w_name}) กิน +{s["cards_won"]}</span></div><div style="display: flex; gap: 4px;">{cards_html}</div></div>'
+        st.markdown(summary_box, unsafe_allow_html=True)
+
+    # 2. 📊 คำนวณคะแนนรอบนี้ + คะแนนรวมสะสม (รวมตาที่แล้ว + ตาใหม่)
+    st.markdown("### 📊 ตารางสรุปคะแนน")
     round_results = []
+    
     for i in range(4):
         bid, won = server.bids[i], server.tricks_won[i]
         base = 3 if (bid == 0 and won == 0) else ((bid + 5) if bid == won else -abs(won - bid))
         round_score = base * server.multiplier
         round_results.append(round_score)
-        st.write(f"• **P{i+1} ({get_player_name(i)})**: **{round_score} แต้ม** (เรียก {bid}/กิน {won})")
+        
+        # แต้มรวมสะสม = แต้มสะสมเดิม + แต้มรอบนี้
+        total_accumulated = server.scores[i] + round_score
+        score_formatted = f"+{round_score}" if round_score > 0 else f"{round_score}"
+        total_formatted = f"+{total_accumulated}" if total_accumulated > 0 else f"{total_accumulated}"
+        
+        st.markdown(
+            f"• **P{i+1} ({get_player_name(i)})**: **{score_formatted} แต้ม** (เรียก {bid}/กิน {won}) "
+            f"➔ <span style='color: #4caf50; font-weight: bold;'>[คะแนนรวมสะสม: {total_formatted} แต้ม]</span>",
+            unsafe_allow_html=True
+        )
+
+    st.markdown("---")
 
     if my_role == "P1":
         if st.button("➡️ ไปต่อรอบถัดไป", type="primary", use_container_width=True):
