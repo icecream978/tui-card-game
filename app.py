@@ -10,7 +10,7 @@ from tui_engine import (
 )
 
 # ---------------------------------------------------------
-# 📱 ตั้งค่าหน้าจอ & CSS สำหรับมือถือ
+# 📱 ตั้งค่าหน้าจอ & CSS สำหรับมือถือ (แก้ปุ่มกดไพ่)
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="เกมตุ่ย Mobile", 
@@ -28,66 +28,44 @@ st.markdown("""
     .stAlert { padding: 4px 8px !important; margin-bottom: 4px !important; }
     hr { margin: 6px 0 !important; }
 
-    /* 📱 บังคับให้คอลัมน์ไพ่อยู่แถวเดียวกันบนมือถือ ไม่แนวตั้ง */
+    /* 📱 บังคับให้คอลัมน์ไพ่อยู่แถวเดียวกัน 4 ใบเสมอ ไม่ลงมาต่อแถวยาว */
     div[data-testid="stHorizontalBlock"] {
         display: flex !important;
         flex-direction: row !important;
         flex-wrap: nowrap !important;
-        gap: 3px !important;
-        align-items: stretch !important;
+        gap: 4px !important;
+        align-items: flex-start !important;
     }
     
     div[data-testid="stColumn"] {
         flex: 1 1 0% !important;
         min-width: 0 !important;
         width: auto !important;
-    }
-
-    .stButton > button {
-        border-radius: 8px !important;
-        font-weight: bold !important;
+        padding: 0 !important;
     }
 
     /* 🖼️ ปรับขนาดรูปภาพไพ่ */
     div[data-testid="stImage"] img {
-        max-height: 80px !important;
-        width: auto !important;
+        max-height: 85px !important;
+        width: 100% !important;
         object-fit: contain !important;
         margin: 0 auto !important;
         display: block !important;
         border-radius: 6px !important;
+        pointer-events: none !important; /* ป้องกันรูปบังการกด */
     }
 
-    /* 🖱️ ปล่อยให้แรงกด/คลิกทะลุรูปภาพลงไปยังปุ่ม */
-    div[data-testid="stColumn"]:has(div[data-testid="stImage"]) {
-        position: relative !important;
-    }
-
-    div[data-testid="stColumn"]:has(div[data-testid="stImage"]) div[data-testid="stImage"] {
-        pointer-events: none !important;
-    }
-
-    div[data-testid="stColumn"]:has(div[data-testid="stImage"]) div[data-testid="stImage"] img {
-        pointer-events: none !important;
-    }
-
-    /* 👻 ปุ่มล่องหนขยายเต็มช่องสำหรับกดที่รูปไพ่ตรงๆ */
-    div[data-testid="stColumn"]:has(div[data-testid="stImage"]) .stButton {
-        position: absolute !important;
-        top: 0 !important;
-        left: 0 !important;
+    /* 🔘 ปรับสไตล์ปุ่มกดเลือกไพ่ใต้รูปให้เต็มช่อง กดง่ายบนมือถือ */
+    div[data-testid="stColumn"] .stButton > button {
         width: 100% !important;
-        height: 100% !important;
-        z-index: 10 !important;
-    }
-
-    div[data-testid="stColumn"]:has(div[data-testid="stImage"]) .stButton > button {
-        width: 100% !important;
-        height: 100% !important;
-        opacity: 0 !important;
-        background: transparent !important;
-        border: none !important;
-        cursor: pointer !important;
+        padding: 4px 2px !important;
+        font-size: 11px !important;
+        font-weight: bold !important;
+        border-radius: 6px !important;
+        margin-top: 2px !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -227,7 +205,7 @@ if "selected_cards" not in st.session_state:
 my_id = st.session_state.my_id
 
 # ---------------------------------------------------------
-# 🎴 ระบบแสดงผลไพ่
+# 🎴 ระบบแสดงผลไพ่ (ปรับปรุงปุ่มกดให้ติด 100%)
 # ---------------------------------------------------------
 def render_pretty_card_board(hand, req_cnt=1, disabled=False):
     sel = st.session_state.selected_cards
@@ -238,7 +216,7 @@ def render_pretty_card_board(hand, req_cnt=1, disabled=False):
     st.markdown(f"##### 🎯 ช่องลงหมาก (`{len(sel)}/{req_cnt}` ใบ)")
     
     if not sel:
-        st.info("👇 แตะที่รูปไพ่ด้านล่างเพื่อเลือกหมาก", icon="ℹ️")
+        st.info("👇 แตะที่ปุ่มชื่อหมากใต้รูปด้านล่างเพื่อเลือก", icon="ℹ️")
     else:
         drop_cols = st.columns(max(len(sel), 1))
         for d_idx, c_idx in enumerate(sel):
@@ -246,19 +224,17 @@ def render_pretty_card_board(hand, req_cnt=1, disabled=False):
             img_path = get_card_image_path(card)
             
             with drop_cols[d_idx]:
-                st.markdown('<div style="position: absolute; top: -4px; right: 2px; background: #dc3545; color: white; border-radius: 50%; width: 20px; height: 20px; text-align: center; font-size: 11px; font-weight: bold; line-height: 20px; z-index: 15; box-shadow: 0 1px 3px rgba(0,0,0,0.3);">✕</div>', unsafe_allow_html=True)
                 if img_path:
                     st.image(img_path, use_container_width=True)
-                else:
-                    st.write(card_label(card))
                 
-                if st.button("", key=f"drop_{d_idx}_{c_idx}"):
+                # ปุ่มกดนำหมากออกจากช่องลง
+                if st.button(f"✕ {card_label(card)}", key=f"drop_{d_idx}_{c_idx}", type="primary", use_container_width=True):
                     st.session_state.selected_cards.remove(c_idx)
                     st.rerun()
 
     st.markdown("---")
 
-    # 2. 🎴 ไพ่ในมือ (4 ใบต่อ 1 แถว)
+    # 2. 🎴 ไพ่ในมือ (เรียงเป็นตาราง 4 ใบต่อ 1 แถว)
     st.markdown("##### 🎴 ไพ่ในมือคุณ:")
     
     for row_start in range(0, len(hand), 4):
@@ -272,26 +248,20 @@ def render_pretty_card_board(hand, req_cnt=1, disabled=False):
                 can_click = not disabled and (is_sel or len(sel) < req_cnt)
 
                 with cols[col_idx]:
-                    if is_sel:
-                        st.markdown('<div style="position: absolute; top: -4px; right: 2px; background: #2e7d32; color: white; border-radius: 50%; width: 22px; height: 22px; text-align: center; font-size: 13px; font-weight: bold; line-height: 22px; z-index: 15; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">✓</div>', unsafe_allow_html=True)
-                    
+                    # แสดงรูปภาพถ้ามี
                     if img_path:
                         st.image(img_path, use_container_width=True)
-                        if st.button("", key=f"card_hand_{card_idx}", disabled=not can_click):
-                            if is_sel:
-                                st.session_state.selected_cards.remove(card_idx)
-                            else:
-                                st.session_state.selected_cards.append(card_idx)
-                            st.rerun()
-                    else:
-                        label = f"✅ {card_label(card)}" if is_sel else card_label(card)
-                        btn_type = "primary" if is_sel else "secondary"
-                        if st.button(label, key=f"card_hand_{card_idx}", type=btn_type, disabled=not can_click, use_container_width=True):
-                            if is_sel:
-                                st.session_state.selected_cards.remove(card_idx)
-                            else:
-                                st.session_state.selected_cards.append(card_idx)
-                            st.rerun()
+                    
+                    # ปุ่มเลือกไพ่ที่อยู่ใต้รูปภาพ (กดง่าย ติด 100% บนมือถือ)
+                    btn_label = f"✅ {card_label(card)}" if is_sel else card_label(card)
+                    btn_type = "primary" if is_sel else "secondary"
+                    
+                    if st.button(btn_label, key=f"card_hand_{card_idx}", type=btn_type, disabled=not can_click, use_container_width=True):
+                        if is_sel:
+                            st.session_state.selected_cards.remove(card_idx)
+                        else:
+                            st.session_state.selected_cards.append(card_idx)
+                        st.rerun()
 
     st.markdown("---")
 
@@ -459,7 +429,7 @@ elif server.phase == "playing":
 
     st.caption(f"🃏 รอบ {server.round_num}/15 | Leader: **P{server.leader+1} ({get_player_name(server.leader)})**")
 
-    # 📜 สรุปไม้ล่าสุด (ใช้ CSS Variable ปรับสีอัตโนมัติตามโหมดสว่าง/มืด)
+    # 📜 สรุปไม้ล่าสุด (สีตามโหมดมืด/สว่าง)
     if getattr(server, 'last_trick_summary', None):
         s = server.last_trick_summary
         w_idx = s["winner_idx"]
