@@ -1,9 +1,6 @@
 import streamlit as st
 import random
 import time
-import os
-import json
-import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
 from tui_engine import (
     deal_round, can_play_tui, can_play_sahoo, 
@@ -12,7 +9,7 @@ from tui_engine import (
 )
 
 # ---------------------------------------------------------
-# 📱 ตั้งค่าหน้าจอ & CSS สำหรับมือถือ (Ultra Compact)
+# 📱 ตั้งค่าหน้าจอ & CSS ตกแต่งปุ่มให้เหมือนไพ่จริง
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="เกมตุ่ย Mobile", 
@@ -25,17 +22,24 @@ st_autorefresh(interval=2000, key="datarefresh")
 
 st.markdown("""
 <style>
+    /* จัดแต่ง Padding สำหรับมือถือ */
     .block-container { padding-top: 0.5rem; padding-bottom: 0.5rem; padding-left: 0.3rem; padding-right: 0.3rem; }
-    .stButton > button { border-radius: 8px; padding: 2px 5px !important; font-size: 13px !important; font-weight: bold; width: 100%; }
     div[data-testid="stSidebarNav"] { display: none; }
     div[data-testid="stHorizontalBlock"] { gap: 0.2rem; }
     .stAlert { padding: 4px 8px !important; margin-bottom: 4px !important; }
-    hr { margin: 4px 0 !important; }
+    hr { margin: 6px 0 !important; }
+
+    /* ตกแต่งปุ่มทั่วไป */
+    .stButton > button {
+        border-radius: 10px !important;
+        font-weight: bold !important;
+        transition: all 0.15s ease-in-out !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 🇹🇭 แปลภาษายศหมากไทย (เรือ, เผ่า, ม้า, ช้าง, บิน, ตี่, จุก)
+# 🇹🇭 แปลภาษายศหมากไทย
 # ---------------------------------------------------------
 RANK_THAI = {
     "Tee": "ตี่", "TEE": "ตี่", "tee": "ตี่",
@@ -98,333 +102,6 @@ def get_available_five_hoo(hand):
     return res
 
 # ---------------------------------------------------------
-# 🛠️ สร้าง Streamlit Custom Component
-# ---------------------------------------------------------
-COMPONENT_DIR = os.path.join(os.path.dirname(__file__), "tui_card_component")
-os.makedirs(COMPONENT_DIR, exist_ok=True)
-
-INDEX_HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.4.0/dist/streamlit-component-lib.js"></script>
-<style>
-    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; user-select: none; -webkit-user-select: none; }
-    body { margin: 0; padding: 2px; background: transparent; }
-
-    .drop-zone {
-        border: 2px dashed #1976D2;
-        border-radius: 10px;
-        padding: 6px;
-        min-height: 55px;
-        background: #F0F7FF;
-        margin-bottom: 8px;
-        text-align: center;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        transition: all 0.2s;
-    }
-    .drop-zone.hover { border-color: #2E7D32; background: #E8F5E9; }
-
-    .drop-zone-title {
-        font-size: 11px;
-        color: #1565C0;
-        font-weight: bold;
-        margin-bottom: 3px;
-    }
-
-    .drop-zone-cards {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        justify-content: center;
-        width: 100%;
-    }
-
-    .empty-hint {
-        font-size: 12px;
-        color: #78909C;
-    }
-
-    /* 4 ใบต่อ 1 แถว */
-    .card-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 6px;
-        margin-bottom: 8px;
-    }
-
-    .card-item {
-        background: #FFFFFF;
-        border: 2px solid #CFD8DC;
-        border-radius: 8px;
-        padding: 8px 2px;
-        text-align: center;
-        font-size: 13px;
-        font-weight: bold;
-        cursor: grab;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        touch-action: none;
-        transition: transform 0.15s, border-color 0.15s;
-    }
-    .card-item.red { color: #D32F2F; border-color: #EF9A9A; background-color: #FFEBEE; }
-    .card-item.black { color: #212121; border-color: #B0BEC5; background-color: #ECEFF1; }
-    .card-item.dragging { opacity: 0.4; }
-
-    .drop-card {
-        padding: 5px 8px;
-        border-radius: 6px;
-        font-size: 13px;
-        font-weight: bold;
-        cursor: pointer;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-    }
-    .drop-card.red { color: #D32F2F; border: 1.5px solid #EF9A9A; background-color: #FFEBEE; }
-    .drop-card.black { color: #212121; border: 1.5px solid #B0BEC5; background-color: #ECEFF1; }
-    .drop-card .remove-btn {
-        font-size: 11px;
-        background: rgba(0,0,0,0.1);
-        border-radius: 50%;
-        width: 14px;
-        height: 14px;
-        display: inline-flex;
-        justify-content: center;
-        align-items: center;
-        margin-left: 2px;
-    }
-
-    .play-btn {
-        width: 100%;
-        padding: 9px;
-        background-color: #2E7D32;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        font-weight: bold;
-        font-size: 14px;
-        cursor: pointer;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-    }
-    .play-btn:disabled { background-color: #B0BEC5; cursor: not-allowed; box-shadow: none; }
-</style>
-</head>
-<body>
-
-<div id="drop-zone" class="drop-zone">
-    <div class="drop-zone-title" id="drop-title">🎯 ช่องลงหมาก</div>
-    <div id="drop-cards-container" class="drop-zone-cards"></div>
-    <div id="empty-hint" class="empty-hint">ลากไพ่มาวางที่นี่ หรือ แตะเลือกไพ่</div>
-</div>
-
-<div id="card-grid" class="card-grid"></div>
-
-<button id="submit-btn" class="play-btn" disabled onclick="submitPlay()">🚀 ลงหมากที่เลือก</button>
-
-<script>
-    let cardsData = [];
-    let reqCount = 1;
-    let isDisabled = false;
-
-    let inDropZone = [];
-    let inHand = [];
-
-    function onRender(event) {
-        const args = event.detail.args;
-        cardsData = args.cards || [];
-        reqCount = args.req_cnt || 1;
-        isDisabled = args.disabled || false;
-
-        inDropZone = [];
-        inHand = cardsData.map((_, i) => i);
-
-        render();
-    }
-
-    function updateHeight() {
-        if (window.Streamlit) {
-            window.Streamlit.setFrameHeight(document.body.scrollHeight + 10);
-        }
-    }
-
-    function render() {
-        document.getElementById('drop-title').innerText = `🎯 ช่องลงหมาก (${inDropZone.length}/${reqCount} ใบ)`;
-        
-        const dropContainer = document.getElementById('drop-cards-container');
-        const emptyHint = document.getElementById('empty-hint');
-        dropContainer.innerHTML = '';
-
-        if (inDropZone.length === 0) {
-            emptyHint.style.display = 'block';
-        } else {
-            emptyHint.style.display = 'none';
-            inDropZone.forEach((cardIdx) => {
-                const card = cardsData[cardIdx];
-                if (!card) return;
-                const el = document.createElement('div');
-                el.className = `drop-card ${card.is_red ? 'red' : 'black'}`;
-                el.innerHTML = `<span>${card.symbol}${card.label}</span><span class="remove-btn">✕</span>`;
-                el.onclick = () => removeFromDropZone(cardIdx);
-                dropContainer.appendChild(el);
-            });
-        }
-
-        const grid = document.getElementById('card-grid');
-        grid.innerHTML = '';
-
-        inHand.forEach((cardIdx, handPosition) => {
-            const card = cardsData[cardIdx];
-            if (!card) return;
-
-            const el = document.createElement('div');
-            el.className = `card-item ${card.is_red ? 'red' : 'black'}`;
-            el.setAttribute('draggable', isDisabled ? 'false' : 'true');
-            el.dataset.cardIdx = cardIdx;
-            el.dataset.handPos = handPosition;
-            el.innerHTML = `<div>${card.symbol}${card.label}</div>`;
-
-            el.onclick = () => {
-                if (isDisabled) return;
-                if (inDropZone.length < reqCount) {
-                    moveToDropZone(cardIdx);
-                } else if (reqCount === 1) {
-                    inHand.push(...inDropZone);
-                    inDropZone = [cardIdx];
-                    inHand = inHand.filter(i => i !== cardIdx);
-                    render();
-                }
-            };
-
-            el.ondragstart = (e) => {
-                e.dataTransfer.setData('text/plain', JSON.stringify({cardIdx, handPosition}));
-                el.classList.add('dragging');
-            };
-            el.ondragend = () => el.classList.remove('dragging');
-
-            el.ondragover = (e) => e.preventDefault();
-            el.ondrop = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const dataRaw = e.dataTransfer.getData('text/plain');
-                if (!dataRaw) return;
-                try {
-                    const data = JSON.parse(dataRaw);
-                    const srcHandPos = data.handPosition;
-                    if (srcHandPos !== undefined && srcHandPos !== handPosition) {
-                        const temp = inHand[srcHandPos];
-                        inHand[srcHandPos] = inHand[handPosition];
-                        inHand[handPosition] = temp;
-                        render();
-                    }
-                } catch(err){}
-            };
-
-            grid.appendChild(el);
-        });
-
-        const dz = document.getElementById('drop-zone');
-        dz.ondragover = (e) => { e.preventDefault(); if (!isDisabled) dz.classList.add('hover'); };
-        dz.ondragleave = () => dz.classList.remove('hover');
-        dz.ondrop = (e) => {
-            e.preventDefault();
-            dz.classList.remove('hover');
-            if (isDisabled) return;
-            const dataRaw = e.dataTransfer.getData('text/plain');
-            if (!dataRaw) return;
-            try {
-                const data = JSON.parse(dataRaw);
-                if (data.cardIdx !== undefined) moveToDropZone(data.cardIdx);
-            } catch(err){}
-        };
-
-        setupTouchEvents();
-
-        const btn = document.getElementById('submit-btn');
-        btn.disabled = isDisabled || (inDropZone.length !== reqCount);
-        btn.innerText = `🚀 ลงหมากที่เลือก (${inDropZone.length}/${reqCount})`;
-
-        setTimeout(updateHeight, 30);
-    }
-
-    function moveToDropZone(cardIdx) {
-        if (inDropZone.includes(cardIdx)) return;
-        if (inDropZone.length < reqCount) {
-            inDropZone.push(cardIdx);
-            inHand = inHand.filter(i => i !== cardIdx);
-            render();
-        }
-    }
-
-    function removeFromDropZone(cardIdx) {
-        inDropZone = inDropZone.filter(i => i !== cardIdx);
-        if (!inHand.includes(cardIdx)) inHand.push(cardIdx);
-        render();
-    }
-
-    let touchSrcIdx = null;
-    let touchSrcHandPos = null;
-
-    function setupTouchEvents() {
-        const grid = document.getElementById('card-grid');
-        grid.ontouchstart = (e) => {
-            const cardEl = e.target.closest('.card-item');
-            if (cardEl) {
-                touchSrcIdx = parseInt(cardEl.dataset.cardIdx);
-                touchSrcHandPos = parseInt(cardEl.dataset.handPos);
-            }
-        };
-
-        grid.ontouchend = (e) => {
-            if (touchSrcIdx !== null) {
-                const touch = e.changedTouches[0];
-                const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
-                
-                if (targetEl && targetEl.closest('#drop-zone')) {
-                    if (!isDisabled) moveToDropZone(touchSrcIdx);
-                } 
-                else if (targetEl && targetEl.closest('.card-item')) {
-                    const targetCardEl = targetEl.closest('.card-item');
-                    const targetPos = parseInt(targetCardEl.dataset.handPos);
-                    if (!isNaN(targetPos) && targetPos !== touchSrcHandPos) {
-                        const temp = inHand[touchSrcHandPos];
-                        inHand[touchSrcHandPos] = inHand[targetPos];
-                        inHand[targetPos] = temp;
-                        render();
-                    }
-                }
-                touchSrcIdx = null;
-                touchSrcHandPos = null;
-            }
-        };
-    }
-
-    function submitPlay() {
-        if (inDropZone.length === reqCount && !isDisabled && window.Streamlit) {
-            window.Streamlit.setComponentValue(inDropZone);
-        }
-    }
-
-    if (window.Streamlit) {
-        window.Streamlit.events.addEventListener(window.Streamlit.RENDER_EVENT, onRender);
-        window.Streamlit.setComponentReady();
-    }
-</script>
-</body>
-</html>
-"""
-
-with open(os.path.join(COMPONENT_DIR, "index.html"), "w", encoding="utf-8") as f:
-    f.write(INDEX_HTML)
-
-tui_card_selector = components.declare_component("tui_card_selector", path=COMPONENT_DIR)
-
-# ---------------------------------------------------------
 # 🏠 Global Room Manager & Session
 # ---------------------------------------------------------
 class GameServer:
@@ -468,20 +145,82 @@ if "my_id" not in st.session_state:
 if "current_room" not in st.session_state:
     st.session_state.current_room = None
 
+if "selected_cards" not in st.session_state:
+    st.session_state.selected_cards = []
+
 my_id = st.session_state.my_id
 
-def render_hand_selector(hand, req_cnt=1, disabled=False, key_suffix=""):
-    cards_payload = []
-    for idx, c in enumerate(hand):
-        cards_payload.append({
-            "idx": idx,
-            "label": get_rank_thai(c.rank),
-            "symbol": "🔴" if str(c.color).strip().lower() in ["red", "r"] else "⚫",
-            "is_red": str(c.color).strip().lower() in ["red", "r"]
-        })
+# ---------------------------------------------------------
+# 🎴 ระบบแสดงผลไพ่ & ช่องลงหมาก แบบ Native ที่สวยงาม
+# ---------------------------------------------------------
+def render_pretty_card_board(hand, req_cnt=1, disabled=False):
+    sel = st.session_state.selected_cards
+    # กรองเอาดรรชนีที่เกินไพ่ในมือออก
+    sel = [i for i in sel if i < len(hand)]
+    st.session_state.selected_cards = sel
 
-    key = f"tui_select_{my_id}_{len(hand)}_{req_cnt}_{key_suffix}"
-    return tui_card_selector(cards=cards_payload, req_cnt=req_cnt, disabled=disabled, key=key)
+    # 1. 🎯 ช่องลงหมาก (Staging Zone)
+    st.markdown(f"##### 🎯 ช่องลงหมาก (`{len(sel)}/{req_cnt}` ใบ)")
+    
+    if not sel:
+        st.info("👇 แตะไพ่ในมือด้านล่างเพื่อย้ายขึ้นมาลงในช่องนี้", icon="ℹ️")
+    else:
+        # แสดงไพ่ที่ถูกเลือกไว้
+        drop_cols = st.columns(max(len(sel), 1))
+        for d_idx, c_idx in enumerate(sel):
+            card = hand[c_idx]
+            if drop_cols[d_idx].button(f"❌ {card_label(card)}", key=f"drop_{d_idx}_{c_idx}"):
+                st.session_state.selected_cards.remove(c_idx)
+                st.rerun()
+
+    st.markdown("---")
+
+    # 2. 🎴 ไพ่ในมือ (จัดเรียง 4 ใบต่อ 1 แถว)
+    st.markdown("##### 🎴 ไพ่ในมือคุณ:")
+    
+    for row_start in range(0, len(hand), 4):
+        cols = st.columns(4)
+        for col_idx in range(4):
+            card_idx = row_start + col_idx
+            if card_idx < len(hand):
+                card = hand[card_idx]
+                is_sel = card_idx in sel
+                
+                label = f"✅ {card_label(card)}" if is_sel else card_label(card)
+                btn_type = "primary" if is_sel else "secondary"
+
+                # คลิกได้ถ้ายังกดไม่ครบ หรือถ้าเลือกไพ่อื่นแทน
+                can_click = not disabled and (is_sel or len(sel) < req_cnt)
+
+                if cols[col_idx].button(
+                    label, 
+                    key=f"card_hand_{card_idx}", 
+                    type=btn_type,
+                    disabled=not can_click,
+                    use_container_width=True
+                ):
+                    if is_sel:
+                        st.session_state.selected_cards.remove(card_idx)
+                    else:
+                        st.session_state.selected_cards.append(card_idx)
+                    st.rerun()
+
+    st.markdown("---")
+
+    # 3. 🚀 ปุ่มยืนยันลงหมาก
+    is_ready = (len(sel) == req_cnt) and not disabled
+    if st.button(
+        f"🚀 ลงหมากที่เลือก ({len(sel)}/{req_cnt})", 
+        type="primary", 
+        disabled=not is_ready, 
+        use_container_width=True,
+        key="btn_confirm_play"
+    ):
+        chosen = [hand[i] for i in sel if i < len(hand)]
+        st.session_state.selected_cards = []  # รีเซ็ต
+        return chosen
+
+    return None
 
 # ---------------------------------------------------------
 # 🚪 หน้าเลือกห้อง
@@ -530,10 +269,12 @@ c_head, c_reset, c_leave = st.columns([6, 1, 1])
 c_head.markdown(f"🏠 **{room_code}** | **{my_name}** (`{my_role}`)")
 if c_reset.button("🔄", help="รีเซ็ตห้อง"):
     server.reset_game()
+    st.session_state.selected_cards = []
     st.rerun()
 if c_leave.button("🚪", help="ออกจากห้อง"):
     del server.players[my_id]
     st.session_state.current_room = None
+    st.session_state.selected_cards = []
     st.rerun()
 
 def get_player_name(idx):
@@ -593,8 +334,7 @@ elif server.phase == "bidding":
             st.write(f"• P{p_idx+1} ({p_n}): {status}")
 
     if my_role != "Spectator":
-        st.caption("🎴 ไพ่ในมือคุณ:")
-        render_hand_selector(server.hands[my_p_idx], req_cnt=1, disabled=True, key_suffix="bid")
+        render_pretty_card_board(server.hands[my_p_idx], req_cnt=1, disabled=True)
 
     if all(server.bids_entered):
         server.phase = "playing"
@@ -632,7 +372,7 @@ elif server.phase == "playing":
 
     st.caption(f"🃏 รอบ {server.round_num}/15 | Leader: **P{server.leader+1} ({get_player_name(server.leader)})**")
 
-    # 📜 สรุปไม้ล่าสุด (ใครลงอะไร / ใครได้กิน)
+    # 📜 สรุปไม้ล่าสุด
     if getattr(server, 'last_trick_summary', None):
         st.markdown("📜 **ไม้ล่าสุด (ใครลงอะไร / ใครได้กิน):**")
         s = server.last_trick_summary
@@ -674,39 +414,33 @@ elif server.phase == "playing":
                 elif "4" in play_type: req_cnt = 4
                 elif "5" in play_type: req_cnt = 5
 
-                played_indices = render_hand_selector(my_hand, req_cnt=req_cnt, disabled=False, key_suffix=f"lead_{req_cnt}")
+                ptype_map = {"เม็ด": "Med", "ตุ่ย": "Tui", "ซาฮู้": "Sa-Hoo", "ซาจุก": "Sa-Jut", "โฟจุก": "Pho-Jut", "โฟฮู้": "Pho-Hoo", "ไฟฟ์ฮู้": "Five-Hoo"}
+                matched_type = "Med"
+                for k, v in ptype_map.items():
+                    if k in play_type: matched_type = v; break
 
-                if played_indices is not None and len(played_indices) == req_cnt:
-                    selected_cards = [my_hand[i] for i in played_indices if i < len(my_hand)]
-                    if len(selected_cards) == req_cnt:
-                        ptype_map = {"เม็ด": "Med", "ตุ่ย": "Tui", "ซาฮู้": "Sa-Hoo", "ซาจุก": "Sa-Jut", "โฟจุก": "Pho-Jut", "โฟฮู้": "Pho-Hoo", "ไฟฟ์ฮู้": "Five-Hoo"}
-                        matched_type = "Med"
-                        for k, v in ptype_map.items():
-                            if k in play_type: matched_type = v; break
-
-                        server.current_plays[server.leader] = selected_cards
-                        server.current_play_type = matched_type
-                        st.rerun()
+                played_cards = render_pretty_card_board(my_hand, req_cnt=req_cnt, disabled=False)
+                if played_cards:
+                    server.current_plays[server.leader] = played_cards
+                    server.current_play_type = matched_type
+                    st.rerun()
 
             # Follower ลงตาม
             elif server.leader in server.current_plays and my_p_idx not in server.current_plays:
                 curr_req = min(len(server.current_plays[server.leader]), len(my_hand))
-                st.write(f"🃏 **ลงหมากตาม (เลือกลาก/แตะ {curr_req} ใบ):**")
+                st.write(f"🃏 **ลงหมากตาม (เลือก {curr_req} ใบ):**")
                 
-                played_indices = render_hand_selector(my_hand, req_cnt=curr_req, disabled=False, key_suffix=f"follow_{curr_req}")
-
-                if played_indices is not None and len(played_indices) == curr_req:
-                    selected_cards = [my_hand[i] for i in played_indices if i < len(my_hand)]
-                    if len(selected_cards) == curr_req:
-                        server.current_plays[my_p_idx] = selected_cards
-                        st.rerun()
+                played_cards = render_pretty_card_board(my_hand, req_cnt=curr_req, disabled=False)
+                if played_cards:
+                    server.current_plays[my_p_idx] = played_cards
+                    st.rerun()
 
             elif my_p_idx in server.current_plays:
                 st.success("✅ คุณลงหมากเรียบร้อย 🔒 (รอคนอื่นลงให้ครบ...)")
-                render_hand_selector(my_hand, req_cnt=1, disabled=True, key_suffix="played_wait")
+                render_pretty_card_board(my_hand, req_cnt=1, disabled=True)
             else:
                 st.info(f"⏳ รอ P{server.leader+1} ({get_player_name(server.leader)}) เปิดหมาก...")
-                render_hand_selector(my_hand, req_cnt=1, disabled=True, key_suffix="leader_wait")
+                render_pretty_card_board(my_hand, req_cnt=1, disabled=True)
 
     else:
         server.phase = "round_summary"
@@ -734,6 +468,7 @@ elif server.phase == "round_summary":
             server.hands, server.leader, server.current_bidder, server.multiplier = hands, leader, leader, mult
             server.tricks_won, server.bids, server.bids_entered = [0]*4, [0]*4, [False]*4
             server.current_plays, server.last_trick_summary, server.played_pieces = {}, None, []
+            st.session_state.selected_cards = []
             server.phase = "bidding"
             st.rerun()
     else: st.info("รอ P1 กดไปต่อรอบถัดไป...")
