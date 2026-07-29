@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import random
 import time
 from streamlit_autorefresh import st_autorefresh
@@ -17,6 +18,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# 🔄 รีเฟรชอัตโนมัติทุก 2 วินาทีเพื่ออัปเดตสถานะห้อง
 st_autorefresh(interval=2000, key="datarefresh")
 
 st.markdown("""
@@ -44,7 +46,6 @@ RANK_THAI = {
     "Jut": "จุก"
 }
 
-# แปลงความใหญ่ยศหมากไว้ใช้เรียงลำดับ
 RANK_VAL = {r: i for i, r in enumerate(RANK_ORDER)}
 
 def card_to_thai(card):
@@ -55,7 +56,7 @@ def card_to_thai(card):
     return f"{color_symbol} {rank_th} ({color_th})"
 
 def render_card_html(card):
-    """สร้าง Card Badge ฝั่งเรา"""
+    """สร้าง Card Badge สวยงาม"""
     is_red = card.color == "Red"
     bg_color = "#FFF0F0" if is_red else "#F0F0F0"
     text_color = "#D32F2F" if is_red else "#212121"
@@ -95,20 +96,107 @@ def render_card_back_visual(count):
     ])
     return f"<div>{backs} <small style='color:#666;'>({count} ใบ)</small></div>"
 
+def render_drag_and_drop_board(cards_in_hand):
+    """Component ลากวางไพ่ในมือ + โซนลงหมาก ด้วย HTML/SortableJS"""
+    cards_html = ""
+    for idx, card in enumerate(cards_in_hand):
+        is_red = card.color == "Red"
+        bg_color = "#FFF0F0" if is_red else "#F0F0F0"
+        text_color = "#D32F2F" if is_red else "#212121"
+        border_color = "#E57373" if is_red else "#9E9E9E"
+        rank_th = RANK_THAI.get(card.rank, card.rank)
+        symbol = '🔴' if is_red else '⚫'
+        
+        cards_html += f"""
+        <div class="card-item" data-index="{idx}" style="
+            display: inline-flex;
+            align-items: center;
+            background-color: {bg_color};
+            color: {text_color};
+            border: 2px solid {border_color};
+            border-radius: 10px;
+            padding: 6px 12px;
+            margin: 3px;
+            font-weight: bold;
+            font-size: 15px;
+            cursor: grab;
+            user-select: none;
+            box-shadow: 1px 2px 4px rgba(0,0,0,0.15);
+            touch-action: none;
+        ">
+            <span style="margin-right: 4px;">{symbol}</span> {rank_th}
+        </div>
+        """
+
+    html_code = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+        <style>
+            body {{ font-family: sans-serif; margin: 0; padding: 2px; background: transparent; }}
+            .zone-title {{ font-weight: bold; font-size: 13px; color: #444; margin-bottom: 4px; }}
+            .drop-zone {{
+                min-height: 60px; border: 2px dashed #4CAF50; border-radius: 10px;
+                padding: 4px; background-color: #F1F8E9; display: flex; flex-wrap: wrap;
+                align-items: center; gap: 2px;
+            }}
+            .hand-zone {{
+                min-height: 60px; border: 2px solid #E0E0E0; border-radius: 10px;
+                padding: 4px; background-color: #FAFAFA; display: flex; flex-wrap: wrap;
+                align-items: center; gap: 2px;
+            }}
+            .ghost-card {{ opacity: 0.4; background-color: #C8E6C9 !important; }}
+            .placeholder-text {{ color: #888; font-size: 12px; font-style: italic; margin: auto; pointer-events: none; }}
+        </style>
+    </head>
+    <body>
+        <div class="zone-title">🎯 โซนลงหมาก (ลากไพ่มาวางที่นี่):</div>
+        <div id="board-zone" class="drop-zone">
+            <span id="hint-text" class="placeholder-text">🎯 ลากไพ่ลงมาที่นี่</span>
+        </div>
+        <div style="height: 8px;"></div>
+        <div class="zone-title">🎴 ไพ่ในมือคุณ (ลากสลับตำแหน่งเพื่อจัดเรียงได้):</div>
+        <div id="hand-zone" class="hand-zone">
+            {cards_html}
+        </div>
+        <script>
+            const handEl = document.getElementById('hand-zone');
+            const boardEl = document.getElementById('board-zone');
+            const hintText = document.getElementById('hint-text');
+
+            function checkHint() {{
+                hintText.style.display = boardEl.querySelectorAll('.card-item').length > 0 ? 'none' : 'block';
+            }}
+
+            new Sortable(handEl, {{
+                group: 'tui-group', animation: 150, ghostClass: 'ghost-card',
+                delay: 50, delayOnTouchOnly: true, onEnd: checkHint
+            }});
+            new Sortable(boardEl, {{
+                group: 'tui-group', animation: 150, ghostClass: 'ghost-card',
+                onAdd: checkHint, onRemove: checkHint
+            }});
+        </script>
+    </body>
+    </html>
+    """
+    components.html(html_code, height=220)
+
 # ---------------------------------------------------------
 # 🔀 ฟังก์ชันช่วยจัดเรียงไพ่ในมือ
 # ---------------------------------------------------------
 def sort_hand(hand, mode="rank_desc"):
-    if mode == "rank_desc":  # ตี่ -> จุก
+    if mode == "rank_desc":
         return sorted(hand, key=lambda c: (-RANK_VAL[c.rank], 0 if c.color == "Red" else 1))
-    elif mode == "rank_asc": # จุก -> ตี่
+    elif mode == "rank_asc":
         return sorted(hand, key=lambda c: (RANK_VAL[c.rank], 0 if c.color == "Red" else 1))
-    elif mode == "color":    # แดง -> ดำ
+    elif mode == "color":
         return sorted(hand, key=lambda c: (0 if c.color == "Red" else 1, -RANK_VAL[c.rank]))
     return hand
 
 # ---------------------------------------------------------
-# 🧠 ฟังก์ชันตรวจสอบชุดหมาก (เช็คจุกล้วน)
+# 🧠 ฟังก์ชันตรวจสอบชุดหมาก
 # ---------------------------------------------------------
 def is_juk(piece):
     return piece.rank == "Jut"
@@ -354,9 +442,8 @@ elif server.phase == "bidding":
 
     st.divider()
 
-    # 🎴 จัดเรียงไพ่ในมือ + ดูหมากเพื่อน
     if my_role != "Spectator":
-        st.subheader("🎴 หมากในมือของคุณ")
+        st.subheader("🎴 จัดเรียง & ดูไพ่ในมือของคุณ")
         sc1, sc2, sc3 = st.columns(3)
         if sc1.button("🔽 ตี่ ➡️ จุก", use_container_width=True):
             server.hands[my_p_idx] = sort_hand(server.hands[my_p_idx], "rank_desc")
@@ -368,8 +455,7 @@ elif server.phase == "bidding":
             server.hands[my_p_idx] = sort_hand(server.hands[my_p_idx], "color")
             st.rerun()
 
-        cards_html = "".join([render_card_html(p) for p in server.hands[my_p_idx]])
-        st.markdown(cards_html, unsafe_allow_html=True)
+        render_drag_and_drop_board(server.hands[my_p_idx])
 
     st.divider()
     st.write("👀 **หมากในมือของเพื่อนร่วมโต๊ะ:**")
@@ -555,9 +641,8 @@ elif server.phase == "playing":
 
         st.divider()
 
-        # 🎴 ไพ่ในมือเรา + ปุ่มจัดเรียง + หลังไพ่เพื่อน
         if my_role != "Spectator":
-            with st.expander(f"🎴 ดูไพ่ในมือของคุณ ({len(server.hands[my_p_idx])} ใบ)", expanded=True):
+            with st.expander(f"🎴 ไพ่ในมือของคุณ ({len(server.hands[my_p_idx])} ใบ) - ใช้ Drag & Drop ได้", expanded=True):
                 sc1, sc2, sc3 = st.columns(3)
                 if sc1.button("🔽 ใหญ่ ➡️ เล็ก", key="s1", use_container_width=True):
                     server.hands[my_p_idx] = sort_hand(server.hands[my_p_idx], "rank_desc")
@@ -569,8 +654,7 @@ elif server.phase == "playing":
                     server.hands[my_p_idx] = sort_hand(server.hands[my_p_idx], "color")
                     st.rerun()
 
-                cards_html = "".join([render_card_html(p) for p in server.hands[my_p_idx]])
-                st.markdown(cards_html, unsafe_allow_html=True)
+                render_drag_and_drop_board(server.hands[my_p_idx])
 
         st.write("👀 **จำนวนไพ่ในมือของเพื่อน:**")
         op_cols = st.columns(3)
