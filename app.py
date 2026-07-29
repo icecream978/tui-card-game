@@ -25,46 +25,68 @@ st.markdown("""
 <style>
     .block-container { padding-top: 0.5rem; padding-bottom: 0.5rem; padding-left: 0.3rem; padding-right: 0.3rem; }
     div[data-testid="stSidebarNav"] { display: none; }
-    div[data-testid="stHorizontalBlock"] { gap: 0.2rem; }
     .stAlert { padding: 4px 8px !important; margin-bottom: 4px !important; }
     hr { margin: 6px 0 !important; }
 
-    .stButton > button {
-        border-radius: 10px !important;
-        font-weight: bold !important;
-        transition: all 0.15s ease-in-out !important;
+    /* 📱 บังคับให้คอลัมน์ไพ่อยู่แถวเดียวกันบนมือถือ ไม่แนวตั้ง */
+    div[data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        gap: 3px !important;
+        align-items: stretch !important;
+    }
+    
+    div[data-testid="stColumn"] {
+        flex: 1 1 0% !important;
+        min-width: 0 !important;
+        width: auto !important;
     }
 
-    /* 🖼️ ปรับขนาดรูปภาพไพ่ให้สวยงามพอดีตา */
+    .stButton > button {
+        border-radius: 8px !important;
+        font-weight: bold !important;
+    }
+
+    /* 🖼️ ปรับขนาดรูปภาพไพ่ */
     div[data-testid="stImage"] img {
-        max-height: 85px !important;
+        max-height: 80px !important;
         width: auto !important;
         object-fit: contain !important;
         margin: 0 auto !important;
         display: block !important;
-        border-radius: 8px !important;
-        transition: transform 0.15s ease;
+        border-radius: 6px !important;
     }
 
-    /* 🖱️ เอฟเฟกต์ซูมเล็กน้อยเมื่อเอาเมาส์ชี้รูปไพ่ */
-    div[data-testid="stColumn"]:has(div[data-testid="stImage"]):hover img {
-        transform: scale(1.05);
-    }
-
-    /* 🎯 จัดการคอลัมน์ที่มีรูปไพ่ให้รองรับการกดคลิกบนรูปตรงๆ */
+    /* 🖱️ ปล่อยให้แรงกด/คลิกทะลุรูปภาพลงไปยังปุ่ม */
     div[data-testid="stColumn"]:has(div[data-testid="stImage"]) {
         position: relative !important;
     }
 
-    /* 👻 ปุ่มกดล่องหนขยายครอบทับรูปภาพทั้งหมดเพื่อรับแรงคลิก */
-    div[data-testid="stColumn"]:has(div[data-testid="stImage"]) button {
+    div[data-testid="stColumn"]:has(div[data-testid="stImage"]) div[data-testid="stImage"] {
+        pointer-events: none !important;
+    }
+
+    div[data-testid="stColumn"]:has(div[data-testid="stImage"]) div[data-testid="stImage"] img {
+        pointer-events: none !important;
+    }
+
+    /* 👻 ปุ่มล่องหนขยายเต็มช่องสำหรับกดที่รูปไพ่ตรงๆ */
+    div[data-testid="stColumn"]:has(div[data-testid="stImage"]) .stButton {
         position: absolute !important;
         top: 0 !important;
         left: 0 !important;
         width: 100% !important;
         height: 100% !important;
-        opacity: 0 !important;
         z-index: 10 !important;
+    }
+
+    div[data-testid="stColumn"]:has(div[data-testid="stImage"]) .stButton > button {
+        width: 100% !important;
+        height: 100% !important;
+        opacity: 0 !important;
+        background: transparent !important;
+        border: none !important;
         cursor: pointer !important;
     }
 </style>
@@ -108,10 +130,8 @@ def get_card_image_path(card):
     path_jpg = f"images/{color}_{mapped_rank}.jpg"
     path_png = f"images/{color}_{mapped_rank}.png"
     
-    if os.path.exists(path_jpg):
-        return path_jpg
-    elif os.path.exists(path_png):
-        return path_png
+    if os.path.exists(path_jpg): return path_jpg
+    elif os.path.exists(path_png): return path_png
     return None
 
 # ---------------------------------------------------------
@@ -207,7 +227,7 @@ if "selected_cards" not in st.session_state:
 my_id = st.session_state.my_id
 
 # ---------------------------------------------------------
-# 🎴 ระบบแสดงผลไพ่ (คลิกที่รูปภาพตรงๆ ไม่ต้องมีคำใต้ภาพ)
+# 🎴 ระบบแสดงผลไพ่
 # ---------------------------------------------------------
 def render_pretty_card_board(hand, req_cnt=1, disabled=False):
     sel = st.session_state.selected_cards
@@ -226,14 +246,12 @@ def render_pretty_card_board(hand, req_cnt=1, disabled=False):
             img_path = get_card_image_path(card)
             
             with drop_cols[d_idx]:
-                # แสดงสัญลักษณ์ ✕ ปุ่มเอาออกตรงมุมขวาบนของรูป
-                st.markdown('<div style="position: absolute; top: -4px; right: 2px; background: #dc3545; color: white; border-radius: 50%; width: 20px; height: 20px; text-align: center; font-size: 11px; font-weight: bold; line-height: 20px; z-index: 5; box-shadow: 0 1px 3px rgba(0,0,0,0.3);">✕</div>', unsafe_allow_html=True)
+                st.markdown('<div style="position: absolute; top: -4px; right: 2px; background: #dc3545; color: white; border-radius: 50%; width: 20px; height: 20px; text-align: center; font-size: 11px; font-weight: bold; line-height: 20px; z-index: 15; box-shadow: 0 1px 3px rgba(0,0,0,0.3);">✕</div>', unsafe_allow_html=True)
                 if img_path:
                     st.image(img_path, use_container_width=True)
                 else:
                     st.write(card_label(card))
                 
-                # ปุ่มล่องหนสำหรับกดเอาไพ่ออกจากช่อง stage
                 if st.button("", key=f"drop_{d_idx}_{c_idx}"):
                     st.session_state.selected_cards.remove(c_idx)
                     st.rerun()
@@ -254,9 +272,8 @@ def render_pretty_card_board(hand, req_cnt=1, disabled=False):
                 can_click = not disabled and (is_sel or len(sel) < req_cnt)
 
                 with cols[col_idx]:
-                    # ถ้าถูกเลือก จะมีไอคอน ✓ สีเขียวขึ้นมุมรูป
                     if is_sel:
-                        st.markdown('<div style="position: absolute; top: -4px; right: 2px; background: #2e7d32; color: white; border-radius: 50%; width: 22px; height: 22px; text-align: center; font-size: 13px; font-weight: bold; line-height: 22px; z-index: 5; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">✓</div>', unsafe_allow_html=True)
+                        st.markdown('<div style="position: absolute; top: -4px; right: 2px; background: #2e7d32; color: white; border-radius: 50%; width: 22px; height: 22px; text-align: center; font-size: 13px; font-weight: bold; line-height: 22px; z-index: 15; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">✓</div>', unsafe_allow_html=True)
                     
                     if img_path:
                         st.image(img_path, use_container_width=True)
@@ -267,7 +284,6 @@ def render_pretty_card_board(hand, req_cnt=1, disabled=False):
                                 st.session_state.selected_cards.append(card_idx)
                             st.rerun()
                     else:
-                        # Fallback กรณีไม่มีไฟล์รูป ให้แสดงปุ่มข้อความแบบเดิม
                         label = f"✅ {card_label(card)}" if is_sel else card_label(card)
                         btn_type = "primary" if is_sel else "secondary"
                         if st.button(label, key=f"card_hand_{card_idx}", type=btn_type, disabled=not can_click, use_container_width=True):
@@ -416,7 +432,6 @@ elif server.phase == "bidding":
 # 🃏 PHASE 2: Playing
 # ---------------------------------------------------------
 elif server.phase == "playing":
-    # ประมวลผลเมื่อลงหมากครบ 4 คน
     if len(server.current_plays) == 4:
         for p_idx, chosen_list in server.current_plays.items():
             for target_p in chosen_list:
@@ -444,7 +459,7 @@ elif server.phase == "playing":
 
     st.caption(f"🃏 รอบ {server.round_num}/15 | Leader: **P{server.leader+1} ({get_player_name(server.leader)})**")
 
-    # 📜 สรุปไม้ล่าสุด (แก้ให้ HTML แสดงผลถูกต้องไม่หลุดเป็น Text)
+    # 📜 สรุปไม้ล่าสุด (ใช้ CSS Variable ปรับสีอัตโนมัติตามโหมดสว่าง/มืด)
     if getattr(server, 'last_trick_summary', None):
         s = server.last_trick_summary
         w_idx = s["winner_idx"]
@@ -456,11 +471,11 @@ elif server.phase == "playing":
             cards_str = " ".join([card_label(c) for c in played_cards]) if played_cards else "-"
             
             if i == w_idx:
-                cards_html += f'<div style="flex: 1; background: #e8f5e9; border: 1.5px solid #2e7d32; border-radius: 8px; padding: 4px 2px; text-align: center; min-width: 0;"><div style="font-size: 10px; font-weight: bold; color: #1b5e20; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">🏆 P{i+1}</div><div style="font-size: 13px; font-weight: bold; color: #1b5e20; margin-top: 1px;">{cards_str}</div></div>'
+                cards_html += f'<div style="flex: 1; background: rgba(46, 125, 50, 0.15); border: 1.5px solid #2e7d32; border-radius: 8px; padding: 4px 2px; text-align: center; min-width: 0;"><div style="font-size: 10px; font-weight: bold; color: #4caf50; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">🏆 P{i+1}</div><div style="font-size: 12px; font-weight: bold; color: var(--text-color); margin-top: 1px;">{cards_str}</div></div>'
             else:
-                cards_html += f'<div style="flex: 1; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 4px 2px; text-align: center; min-width: 0;"><div style="font-size: 10px; color: #6c757d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">P{i+1}</div><div style="font-size: 13px; font-weight: bold; color: #212529; margin-top: 1px;">{cards_str}</div></div>'
+                cards_html += f'<div style="flex: 1; background: var(--background-color); border: 1px solid rgba(128, 128, 128, 0.2); border-radius: 8px; padding: 4px 2px; text-align: center; min-width: 0;"><div style="font-size: 10px; color: var(--text-color); opacity: 0.7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">P{i+1}</div><div style="font-size: 12px; font-weight: bold; color: var(--text-color); margin-top: 1px;">{cards_str}</div></div>'
 
-        summary_box = f'<div style="background: #ffffff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 6px 8px; margin-bottom: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;"><span style="font-size: 11px; font-weight: bold; color: #555;">📜 ไม้ล่าสุด</span><span style="font-size: 10px; font-weight: bold; background: #fff3cd; color: #856404; padding: 1px 6px; border-radius: 8px; border: 1px solid #ffeeba;">🎉 P{w_idx+1} ({w_name}) กิน +{s["cards_won"]}</span></div><div style="display: flex; gap: 3px;">{cards_html}</div></div>'
+        summary_box = f'<div style="background: var(--secondary-background-color); border: 1px solid rgba(128, 128, 128, 0.2); border-radius: 10px; padding: 6px 8px; margin-bottom: 6px;"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;"><span style="font-size: 11px; font-weight: bold; color: var(--text-color);">📜 ไม้ล่าสุด</span><span style="font-size: 10px; font-weight: bold; background: rgba(46, 125, 50, 0.2); color: #4caf50; padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(76, 175, 80, 0.3);">🎉 P{w_idx+1} ({w_name}) กิน +{s["cards_won"]}</span></div><div style="display: flex; gap: 4px;">{cards_html}</div></div>'
         st.markdown(summary_box, unsafe_allow_html=True)
 
     with st.expander("📊 ดูแต้ม / สถานะการกินรวม", expanded=False):
