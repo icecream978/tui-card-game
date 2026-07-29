@@ -1,6 +1,8 @@
 import streamlit as st
 import random
 import time
+import json
+import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
 from tui_engine import (
     deal_round, can_play_tui, can_play_sahoo, 
@@ -22,17 +24,17 @@ st_autorefresh(interval=2000, key="datarefresh")
 
 st.markdown("""
 <style>
-    .block-container { padding-top: 0.8rem; padding-bottom: 0.8rem; padding-left: 0.4rem; padding-right: 0.4rem; }
-    .stButton > button { border-radius: 8px; padding: 3px 6px !important; font-size: 13px !important; font-weight: bold; width: 100%; }
+    .block-container { padding-top: 0.6rem; padding-bottom: 0.6rem; padding-left: 0.4rem; padding-right: 0.4rem; }
+    .stButton > button { border-radius: 8px; padding: 2px 5px !important; font-size: 13px !important; font-weight: bold; width: 100%; }
     div[data-testid="stSidebarNav"] { display: none; }
     div[data-testid="stHorizontalBlock"] { gap: 0.2rem; }
     .stAlert { padding: 4px 8px !important; margin-bottom: 4px !important; }
-    hr { margin: 8px 0 !important; }
+    hr { margin: 6px 0 !important; }
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 🇹🇭 แปลภาษายศหมากไทย (อัปเดต: เผ่า, เรือ, ม้า)
+# 🇹🇭 แปลภาษายศหมากไทย (เผ่า, เรือ, ม้า)
 # ---------------------------------------------------------
 RANK_THAI = {
     "Tee": "ตี่",
@@ -49,25 +51,6 @@ RANK_VAL = {r: i for i, r in enumerate(RANK_ORDER)}
 def card_label(card):
     symbol = "🔴" if card.color == "Red" else "⚫"
     return f"{symbol}{RANK_THAI.get(card.rank, card.rank)}"
-
-def render_card_html(card):
-    is_red = card.color == "Red"
-    bg = "#FFF0F0" if is_red else "#F0F0F0"
-    tc = "#D32F2F" if is_red else "#212121"
-    border = "#E57373" if is_red else "#9E9E9E"
-    return f"""<span style="background:{bg};color:{tc};border:1px solid {border};border-radius:6px;padding:2px 6px;margin:1px;font-weight:bold;font-size:12px;">{'🔴' if is_red else '⚫'}{RANK_THAI.get(card.rank, card.rank)}</span>"""
-
-# ---------------------------------------------------------
-# 🔀 ฟังก์ชันช่วยจัดเรียงไพ่ในมือ
-# ---------------------------------------------------------
-def sort_hand(hand, mode="rank_desc"):
-    if mode == "rank_desc":
-        return sorted(hand, key=lambda c: (-RANK_VAL[c.rank], 0 if c.color == "Red" else 1))
-    elif mode == "rank_asc":
-        return sorted(hand, key=lambda c: (RANK_VAL[c.rank], 0 if c.color == "Red" else 1))
-    elif mode == "color":
-        return sorted(hand, key=lambda c: (0 if c.color == "Red" else 1, -RANK_VAL[c.rank]))
-    return hand
 
 # ---------------------------------------------------------
 # 🧠 ฟังก์ชันตรวจสอบชุดหมาก
@@ -156,10 +139,18 @@ if "my_id" not in st.session_state:
 if "current_room" not in st.session_state:
     st.session_state.current_room = None
 
-if "selected_cards" not in st.session_state:
-    st.session_state.selected_cards = []
-
 my_id = st.session_state.my_id
+
+# ตรวจสอบการส่งข้อมูลการเล่นหมากผ่าน URL Query Parameters
+query_params = st.query_params
+played_indices_from_js = None
+if "play_action" in query_params:
+    try:
+        raw_val = query_params["play_action"]
+        played_indices_from_js = [int(x) for x in raw_val.split(",") if x.strip().isdigit()]
+    except Exception:
+        pass
+    st.query_params.clear()
 
 # ---------------------------------------------------------
 # 🚪 หน้าเลือกห้อง
@@ -203,17 +194,15 @@ if my_id not in server.players:
 my_player_info = server.players[my_id]
 my_role, my_name, my_p_idx = my_player_info["role"], my_player_info["name"], my_player_info["p_idx"]
 
-# Header แบบย่อเหลือแค่อิโมจิ
+# Header แบบย่อปุ่มเหลือแค่อิโมจิ
 c_head, c_reset, c_leave = st.columns([6, 1, 1])
 c_head.markdown(f"🏠 **{room_code}** | **{my_name}** (`{my_role}`)")
 if c_reset.button("🔄", help="รีเซ็ตห้อง"):
     server.reset_game()
-    st.session_state.selected_cards = []
     st.rerun()
 if c_leave.button("🚪", help="ออกจากห้อง"):
     del server.players[my_id]
     st.session_state.current_room = None
-    st.session_state.selected_cards = []
     st.rerun()
 
 def get_player_name(idx):
@@ -221,46 +210,210 @@ def get_player_name(idx):
     return p["name"] if p else f"P{idx+1}"
 
 # ---------------------------------------------------------
-# 🎴 Component เลือกไพ่ในมือ (Interactive Tap-to-Select)
+# 🎴 Drag-and-Drop Card Component (4 หมากต่อ 1 แถว)
 # ---------------------------------------------------------
-def render_interactive_hand(hand, max_select=1):
-    st.session_state.selected_cards = [i for i in st.session_state.selected_cards if i < len(hand)]
-    
-    st.caption(f"🎴 **ไพ่ในมือคุณ** (แตะเพื่อเลือก {len(st.session_state.selected_cards)}/{max_select} ใบ):")
-    
-    # ปุ่มเรียงไพ่แบบย่อ
-    sc1, sc2, sc3 = st.columns(3)
-    if sc1.button("🔽 ตี่➡️จุก", use_container_width=True):
-        server.hands[my_p_idx] = sort_hand(hand, "rank_desc")
-        st.session_state.selected_cards = []
-        st.rerun()
-    if sc2.button("🔼 จุก➡️ตี่", use_container_width=True):
-        server.hands[my_p_idx] = sort_hand(hand, "rank_asc")
-        st.session_state.selected_cards = []
-        st.rerun()
-    if sc3.button("🔴⚫ สี", use_container_width=True):
-        server.hands[my_p_idx] = sort_hand(hand, "color")
-        st.session_state.selected_cards = []
-        st.rerun()
+def render_drag_and_drop_hand(hand, req_cnt=1, disabled=False):
+    cards_payload = []
+    for idx, c in enumerate(hand):
+        cards_payload.append({
+            "idx": idx,
+            "label": RANK_THAI.get(c.rank, c.rank),
+            "symbol": "🔴" if c.color == "Red" else "⚫",
+            "is_red": c.color == "Red"
+        })
 
-    # แสดงไพ่เป็นปุ่มกดเรียงกริด
-    grid_cols = st.columns(4)
-    for idx, card in enumerate(hand):
-        col = grid_cols[idx % 4]
-        is_selected = idx in st.session_state.selected_cards
-        btn_label = f"{'✅ ' if is_selected else ''}{card_label(card)}"
-        btn_type = "primary" if is_selected else "secondary"
+    html_code = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        * {{ box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; user-select: none; }}
+        body {{ margin: 0; padding: 2px; background: transparent; }}
         
-        if col.button(btn_label, key=f"card_btn_{idx}", type=btn_type, use_container_width=True):
-            if is_selected:
-                st.session_state.selected_cards.remove(idx)
-            else:
-                if max_select == 1:
-                    st.session_state.selected_cards = [idx]
-                else:
-                    if len(st.session_state.selected_cards) < max_select:
-                        st.session_state.selected_cards.append(idx)
-            st.rerun()
+        /* Dropzone พื้นที่ลากไพ่มาวาง */
+        .drop-zone {{
+            border: 2px dashed #9E9E9E;
+            border-radius: 8px;
+            padding: 8px;
+            text-align: center;
+            font-size: 13px;
+            font-weight: bold;
+            color: #555;
+            background: #FAFAFA;
+            margin-bottom: 8px;
+            transition: all 0.2s;
+        }}
+        .drop-zone.hover {{ border-color: #2196F3; background: #E3F2FD; color: #0D47A1; }}
+
+        /* Card Grid: 1 แถวใส่ 4 หมากพอดี */
+        .card-grid {{
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+        }}
+
+        .card-item {{
+            background: #FFFFFF;
+            border: 2px solid #CFD8DC;
+            border-radius: 8px;
+            padding: 8px 2px;
+            text-align: center;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: grab;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            touch-action: none;
+            transition: transform 0.15s, border-color 0.15s;
+        }}
+        .card-item.red {{ color: #D32F2F; border-color: #EF9A9A; background-color: #FFEBEE; }}
+        .card-item.black {{ color: #212121; border-color: #B0BEC5; background-color: #ECEFF1; }}
+        .card-item.selected {{ border: 2.5px solid #1976D2; box-shadow: 0 0 6px rgba(25, 118, 210, 0.6); transform: translateY(-3px); }}
+        .card-item.dragging {{ opacity: 0.4; }}
+
+        .play-btn {{
+            width: 100%;
+            margin-top: 8px;
+            padding: 8px;
+            background-color: #1976D2;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+        }}
+        .play-btn:disabled {{ background-color: #B0BEC5; cursor: not-allowed; }}
+    </style>
+    </head>
+    <body>
+
+    <div id="drop-zone" class="drop-zone">
+        🎯 ลากไพ่มาวางที่นี่ หรือ แตะเลือก ({req_cnt} ใบ)
+    </div>
+
+    <div id="card-grid" class="card-grid"></div>
+
+    <button id="submit-btn" class="play-btn" disabled onclick="submitPlay()">🚀 ลงหมากที่เลือก</button>
+
+    <script>
+        let cardsData = {json.dumps(cards_payload)};
+        let reqCount = {req_cnt};
+        let isDisabled = {str(disabled).lower()};
+        let selectedIndices = [];
+
+        function renderCards() {{
+            const grid = document.getElementById('card-grid');
+            grid.innerHTML = '';
+
+            cardsData.forEach((card, idx) => {{
+                const el = document.createElement('div');
+                el.className = `card-item ${{card.is_red ? 'red' : 'black'}} ${{selectedIndices.includes(idx) ? 'selected' : ''}}`;
+                el.setAttribute('draggable', isDisabled ? 'false' : 'true');
+                el.dataset.index = idx;
+                el.innerHTML = `<div>${{card.symbol}}${{card.label}}</div>`;
+
+                // Tap / Click to select
+                el.onclick = () => {{
+                    if (isDisabled) return;
+                    if (selectedIndices.includes(idx)) {{
+                        selectedIndices = selectedIndices.filter(i => i !== idx);
+                    }} else {{
+                        if (selectedIndices.length < reqCount) {{
+                            selectedIndices.push(idx);
+                        }} else if (reqCount === 1) {{
+                            selectedIndices = [idx];
+                        }}
+                    }}
+                    renderCards();
+                }};
+
+                // HTML5 Drag & Drop
+                el.ondragstart = (e) => {{
+                    e.dataTransfer.setData('text/plain', idx);
+                    el.classList.add('dragging');
+                }};
+                el.ondragend = () => el.classList.remove('dragging');
+
+                el.ondragover = (e) => e.preventDefault();
+                el.ondrop = (e) => {{
+                    e.preventDefault();
+                    const srcIdx = parseInt(e.dataTransfer.getData('text/plain'));
+                    if (!isNaN(srcIdx) && srcIdx !== idx) {{
+                        // สลับตำแหน่งไพ่จากการลากจัดเรียง
+                        const temp = cardsData[srcIdx];
+                        cardsData[srcIdx] = cardsData[idx];
+                        cardsData[idx] = temp;
+                        selectedIndices = [];
+                        renderCards();
+                    }}
+                }};
+
+                grid.appendChild(el);
+            }});
+
+            const btn = document.getElementById('submit-btn');
+            btn.disabled = isDisabled || (selectedIndices.length !== reqCount);
+            btn.innerText = `🚀 ลงหมากที่เลือก (${{selectedIndices.length}}/${{reqCount}})`;
+        }}
+
+        // Dropzone drag over / drop
+        const dz = document.getElementById('drop-zone');
+        dz.ondragover = (e) => {{ e.preventDefault(); dz.classList.add('hover'); }};
+        dz.ondragleave = () => dz.classList.remove('hover');
+        dz.ondrop = (e) => {{
+            e.preventDefault();
+            dz.classList.remove('hover');
+            const srcIdx = parseInt(e.dataTransfer.getData('text/plain'));
+            if (!isNaN(srcIdx) && !selectedIndices.includes(srcIdx) && selectedIndices.length < reqCount) {{
+                selectedIndices.push(srcIdx);
+                renderCards();
+            }}
+        }};
+
+        // Touch Drag & Drop support สำหรับจอมือถือ
+        let touchSrcIdx = null;
+        const grid = document.getElementById('card-grid');
+        grid.addEventListener('touchstart', (e) => {{
+            const cardEl = e.target.closest('.card-item');
+            if (cardEl) {{
+                touchSrcIdx = parseInt(cardEl.dataset.index);
+            }}
+        }}, {{passive: true}});
+
+        grid.addEventListener('touchend', (e) => {{
+            if (touchSrcIdx !== null) {{
+                const touch = e.changedTouches[0];
+                const targetEl = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.card-item');
+                if (targetEl) {{
+                    const targetIdx = parseInt(targetEl.dataset.index);
+                    if (!isNaN(targetIdx) && targetIdx !== touchSrcIdx) {{
+                        const temp = cardsData[touchSrcIdx];
+                        cardsData[touchSrcIdx] = cardsData[targetIdx];
+                        cardsData[targetIdx] = temp;
+                        selectedIndices = [];
+                        renderCards();
+                    }}
+                }}
+                touchSrcIdx = null;
+            }}
+        }});
+
+        function submitPlay() {{
+            if (selectedIndices.length === reqCount && !isDisabled) {{
+                const parentUrl = new URL(window.parent.location.href);
+                parentUrl.searchParams.set('play_action', selectedIndices.join(','));
+                parentUrl.searchParams.set('ts', Date.now());
+                window.parent.location.href = parentUrl.toString();
+            }}
+        }}
+
+        renderCards();
+    </script>
+    </body>
+    </html>
+    """
+    components.html(html_code, height=210)
 
 # ---------------------------------------------------------
 # 🚪 PHASE 0: Lobby
@@ -280,7 +433,6 @@ if server.phase == "lobby":
             hands, leader, mult = deal_round(None, is_first_round=True)
             server.hands, server.leader, server.current_bidder, server.multiplier = hands, leader, leader, mult
             server.phase = "bidding"
-            st.session_state.selected_cards = []
             st.rerun()
 
 # ---------------------------------------------------------
@@ -309,7 +461,7 @@ elif server.phase == "bidding":
             server.current_bidder = (server.current_bidder + 1) % 4
             st.rerun()
 
-    # ย่อสถานะการบิด
+    # สถานะการบิด
     with st.expander("📊 ดูการบิดแต้มเพื่อน", expanded=False):
         for idx, p_idx in enumerate(bid_order):
             p_n = get_player_name(p_idx)
@@ -317,11 +469,11 @@ elif server.phase == "bidding":
             st.write(f"• P{p_idx+1} ({p_n}): {status}")
 
     if my_role != "Spectator":
-        render_interactive_hand(server.hands[my_p_idx], max_select=1)
+        st.caption("🎴 ไพ่ในมือคุณ (จัดเรียงลากสลับตำแหน่งได้):")
+        render_drag_and_drop_hand(server.hands[my_p_idx], req_cnt=1, disabled=True)
 
     if all(server.bids_entered):
         server.phase = "playing"
-        st.session_state.selected_cards = []
         st.rerun()
 
 # ---------------------------------------------------------
@@ -352,19 +504,29 @@ elif server.phase == "playing":
 
         server.leader = winner
         server.current_plays = {}
-        st.session_state.selected_cards = []
         st.rerun()
 
     st.caption(f"🃏 รอบ {server.round_num}/15 | Leader: **P{server.leader+1} ({get_player_name(server.leader)})**")
 
-    # แต้มและการกินแบบย่อ (กดขยายเพื่อดู)
-    with st.expander("📊 ดูแต้ม / สถานะการกิน (กดเพื่อดู)", expanded=False):
+    # 📜 สรุปไม้ล่าสุด (นำกลับมาตามที่ขอ: ใครลงอะไร ใครได้กิน)
+    if getattr(server, 'last_trick_summary', None):
+        st.markdown("📜 **ไม้ล่าสุด (ใครลงอะไร / ใครได้กิน):**")
+        s = server.last_trick_summary
+        cols_summary = st.columns(4)
         for i in range(4):
-            st.write(f"• **P{i+1} ({get_player_name(i)})**: เรียก {server.bids[i]} | กิน {server.tricks_won[i]} แต้ม")
-        if getattr(server, 'last_trick_summary', None):
-            s = server.last_trick_summary
-            st.divider()
-            st.caption(f"🏆 ไม้ล่าสุด: P{s['winner_idx']+1} ({s['winner_name']}) ชนะกิน (+{s['cards_won']} แต้ม)")
+            played_cards = s["plays"].get(i, [])
+            cards_str = " ".join([card_label(c) for c in played_cards]) if played_cards else "ไม่ได้ลง"
+            p_name = get_player_name(i)
+            if i == s["winner_idx"]:
+                cols_summary[i].success(f"🏆 **P{i+1}**\n\n{cards_str}\n\n*(กิน +{s['cards_won']})*")
+            else:
+                cols_summary[i].info(f"👤 P{i+1}\n\n{cards_str}")
+        st.divider()
+
+    # แต้มและการกินแบบย่อ
+    with st.expander("📊 ดูแต้ม / สถานะการกินรวม", expanded=False):
+        for i in range(4):
+            st.write(f"• **P{i+1} ({get_player_name(i)})**: เรียก {server.bids[i]} | กินแล้ว {server.tricks_won[i]} แต้ม")
 
     # ส่วนการเล่นหมาก
     if any(len(h) > 0 for h in server.hands):
@@ -390,14 +552,10 @@ elif server.phase == "playing":
                 elif "4" in play_type: req_cnt = 4
                 elif "5" in play_type: req_cnt = 5
 
-                render_interactive_hand(my_hand, max_select=req_cnt)
-
-                selected_indices = st.session_state.selected_cards
-                if len(selected_indices) == req_cnt:
-                    if st.button("🚀 ลงหมากที่เลือก", type="primary", use_container_width=True):
-                        selected_cards = [my_hand[i] for i in selected_indices]
-                        
-                        # กำหนด Type
+                # ประมวลผลเมื่อกดส่งหมากจาก JS Drag Component
+                if played_indices_from_js is not None and len(played_indices_from_js) == req_cnt:
+                    selected_cards = [my_hand[i] for i in played_indices_from_js if i < len(my_hand)]
+                    if len(selected_cards) == req_cnt:
                         ptype_map = {"เม็ด": "Med", "ตุ่ย": "Tui", "ซาฮู้": "Sa-Hoo", "ซาจุก": "Sa-Jut", "โฟจุก": "Pho-Jut", "โฟฮู้": "Pho-Hoo", "ไฟฟ์ฮู้": "Five-Hoo"}
                         matched_type = "Med"
                         for k, v in ptype_map.items():
@@ -405,27 +563,29 @@ elif server.phase == "playing":
 
                         server.current_plays[server.leader] = selected_cards
                         server.current_play_type = matched_type
-                        st.session_state.selected_cards = []
                         st.rerun()
+
+                render_drag_and_drop_hand(my_hand, req_cnt=req_cnt, disabled=False)
 
             # Follower ลงตาม
             elif server.leader in server.current_plays and my_p_idx not in server.current_plays:
                 curr_req = min(len(server.current_plays[server.leader]), len(my_hand))
-                st.write(f"🃏 **ลงหมากตาม (เลือก {curr_req} ใบ):**")
+                st.write(f"🃏 **ลงหมากตาม (เลือกลาก/แตะ {curr_req} ใบ):**")
                 
-                render_interactive_hand(my_hand, max_select=curr_req)
-
-                selected_indices = st.session_state.selected_cards
-                if len(selected_indices) == curr_req:
-                    if st.button("✅ ยืนยันลงหมาก", type="primary", use_container_width=True):
-                        server.current_plays[my_p_idx] = [my_hand[i] for i in selected_indices]
-                        st.session_state.selected_cards = []
+                if played_indices_from_js is not None and len(played_indices_from_js) == curr_req:
+                    selected_cards = [my_hand[i] for i in played_indices_from_js if i < len(my_hand)]
+                    if len(selected_cards) == curr_req:
+                        server.current_plays[my_p_idx] = selected_cards
                         st.rerun()
+
+                render_drag_and_drop_hand(my_hand, req_cnt=curr_req, disabled=False)
 
             elif my_p_idx in server.current_plays:
                 st.success("✅ คุณลงหมากเรียบร้อย 🔒 (รอคนอื่นลงให้ครบ...)")
+                render_drag_and_drop_hand(my_hand, req_cnt=1, disabled=True)
             else:
                 st.info(f"⏳ รอ P{server.leader+1} ({get_player_name(server.leader)}) เปิดหมาก...")
+                render_drag_and_drop_hand(my_hand, req_cnt=1, disabled=True)
 
     else:
         server.phase = "round_summary"
@@ -454,6 +614,5 @@ elif server.phase == "round_summary":
             server.tricks_won, server.bids, server.bids_entered = [0]*4, [0]*4, [False]*4
             server.current_plays, server.last_trick_summary, server.played_pieces = {}, None, []
             server.phase = "bidding"
-            st.session_state.selected_cards = []
             st.rerun()
     else: st.info("รอ P1 กดไปต่อรอบถัดไป...")
