@@ -10,7 +10,7 @@ from tui_engine import (
 )
 
 # ---------------------------------------------------------
-# 📱 ตั้งค่าหน้าจอ & CSS สำหรับมือถือ (แก้ปุ่มกดไพ่)
+# 📱 ตั้งค่าหน้าจอ & CSS สำหรับมือถือ
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="เกมตุ่ย Mobile", 
@@ -52,7 +52,7 @@ st.markdown("""
         margin: 0 auto !important;
         display: block !important;
         border-radius: 6px !important;
-        pointer-events: none !important; /* ป้องกันรูปบังการกด */
+        pointer-events: none !important;
     }
 
     /* 🔘 ปรับสไตล์ปุ่มกดเลือกไพ่ใต้รูปให้เต็มช่อง กดง่ายบนมือถือ */
@@ -205,36 +205,14 @@ if "selected_cards" not in st.session_state:
 my_id = st.session_state.my_id
 
 # ---------------------------------------------------------
-# 🎴 ระบบแสดงผลไพ่ (ปรับปรุงปุ่มกดให้ติด 100%)
+# 🎴 ระบบแสดงผลไพ่ (ไม่มีช่องลงหมากแล้ว)
 # ---------------------------------------------------------
 def render_pretty_card_board(hand, req_cnt=1, disabled=False):
     sel = st.session_state.selected_cards
     sel = [i for i in sel if i < len(hand)]
     st.session_state.selected_cards = sel
 
-    # 1. 🎯 ช่องลงหมาก
-    st.markdown(f"##### 🎯 ช่องลงหมาก (`{len(sel)}/{req_cnt}` ใบ)")
-    
-    if not sel:
-        st.info("👇 แตะที่ปุ่มชื่อหมากใต้รูปด้านล่างเพื่อเลือก", icon="ℹ️")
-    else:
-        drop_cols = st.columns(max(len(sel), 1))
-        for d_idx, c_idx in enumerate(sel):
-            card = hand[c_idx]
-            img_path = get_card_image_path(card)
-            
-            with drop_cols[d_idx]:
-                if img_path:
-                    st.image(img_path, use_container_width=True)
-                
-                # ปุ่มกดนำหมากออกจากช่องลง
-                if st.button(f"✕ {card_label(card)}", key=f"drop_{d_idx}_{c_idx}", type="primary", use_container_width=True):
-                    st.session_state.selected_cards.remove(c_idx)
-                    st.rerun()
-
-    st.markdown("---")
-
-    # 2. 🎴 ไพ่ในมือ (เรียงเป็นตาราง 4 ใบต่อ 1 แถว)
+    # 1. 🎴 ไพ่ในมือ (เรียงตาราง 4 ใบต่อ 1 แถว)
     st.markdown("##### 🎴 ไพ่ในมือคุณ:")
     
     for row_start in range(0, len(hand), 4):
@@ -248,11 +226,10 @@ def render_pretty_card_board(hand, req_cnt=1, disabled=False):
                 can_click = not disabled and (is_sel or len(sel) < req_cnt)
 
                 with cols[col_idx]:
-                    # แสดงรูปภาพถ้ามี
                     if img_path:
                         st.image(img_path, use_container_width=True)
                     
-                    # ปุ่มเลือกไพ่ที่อยู่ใต้รูปภาพ (กดง่าย ติด 100% บนมือถือ)
+                    # ปุ่มเลือกไพ่ใต้รูป (กดเลือก/ยกเลิกตรงนี้ได้เลย)
                     btn_label = f"✅ {card_label(card)}" if is_sel else card_label(card)
                     btn_type = "primary" if is_sel else "secondary"
                     
@@ -265,7 +242,7 @@ def render_pretty_card_board(hand, req_cnt=1, disabled=False):
 
     st.markdown("---")
 
-    # 3. 🚀 ปุ่มยืนยันลงหมาก
+    # 2. 🚀 ปุ่มยืนยันลงหมาก
     is_ready = (len(sel) == req_cnt) and not disabled
     if st.button(
         f"🚀 ลงหมากที่เลือก ({len(sel)}/{req_cnt})", 
@@ -429,7 +406,7 @@ elif server.phase == "playing":
 
     st.caption(f"🃏 รอบ {server.round_num}/15 | Leader: **P{server.leader+1} ({get_player_name(server.leader)})**")
 
-    # 📜 สรุปไม้ล่าสุด (สีตามโหมดมืด/สว่าง)
+    # 📜 สรุปไม้ล่าสุด
     if getattr(server, 'last_trick_summary', None):
         s = server.last_trick_summary
         w_idx = s["winner_idx"]
