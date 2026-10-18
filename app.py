@@ -291,9 +291,12 @@ class RoomManager:
         if room_id not in self.rooms: self.rooms[room_id] = GameServer(room_id)
         return self.rooms[room_id]
 
+# เพิ่มเลขนี้ทุกครั้งที่แก้โครงสร้าง GameServer: Streamlit จะสร้างที่เก็บห้องใหม่ แทนที่จะใช้ห้องเก่าจากโค้ดรุ่นก่อนที่ค้างในหน่วยความจำ
+ROOM_STORE_VERSION = 2
+
 @st.cache_resource
-def get_room_manager(): return RoomManager()
-room_manager = get_room_manager()
+def get_room_manager(version): return RoomManager()
+room_manager = get_room_manager(ROOM_STORE_VERSION)
 
 if "my_id" not in st.session_state:
     st.session_state.my_id = f"user_{int(time.time() * 1000)}_{random.randint(100, 999)}"
@@ -403,8 +406,8 @@ if not st.session_state.current_room:
 # ---------------------------------------------------------
 room_code = st.session_state.current_room
 server = room_manager.get_or_create_room(room_code)
-for _k, _v in (('play_order', []), ('exact_streak', [0, 0, 0, 0]), ('reactions', [])):
-    if not hasattr(server, _k): setattr(server, _k, list(_v))  # ห้องเก่าที่ค้างในหน่วยความจำ
+for _k, _v in vars(GameServer(room_code)).items():
+    if not hasattr(server, _k): setattr(server, _k, _v)  # เติมค่าที่ห้องจากโค้ดรุ่นก่อนยังไม่มี (กัน AttributeError)
 
 if my_id not in server.players:
     taken = {p["p_idx"] for p in server.players.values() if p["p_idx"] >= 0}
